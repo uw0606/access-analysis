@@ -1,9 +1,8 @@
 import os
 import requests
 from supabase import create_client
-from dotenv import load_dotenv
 
-load_dotenv()
+# GitHub Actions環境では Secrets から直接読み込むため load_dotenv は不要です
 
 # --- 設定値 ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -87,6 +86,11 @@ SONG_LIST = {
 
 def fetch_and_save():
     print("--- 📺 YouTube動画統計データ取得開始 ---")
+    
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ エラー: SUPABASE の設定が見つかりません。")
+        return
+
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     for video_id, song_name in SONG_LIST.items():
@@ -97,7 +101,6 @@ def fetch_and_save():
             if 'items' in res and len(res['items']) > 0:
                 item = res['items'][0]
                 views = int(item['statistics']['viewCount'])
-                # YouTube APIから取得した公開日を「YYYY-MM-DD」形式にする
                 published_at = item['snippet']['publishedAt'][:10]
                 
                 data = {

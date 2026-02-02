@@ -3,9 +3,8 @@ import requests
 import instaloader
 import re
 from supabase import create_client
-from dotenv import load_dotenv
 
-load_dotenv()
+# GitHub Actions環境では Secrets から直接読み込むため load_dotenv は不要です
 
 # --- 設定値 ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -37,6 +36,11 @@ def get_tiktok_followers(username):
 
 def update_sns_data():
     print("--- 🚀 SNSデータ一括取得・更新開始 (Order: YT -> IG -> TK) ---")
+    
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ エラー: SUPABASE の設定が見つかりません。")
+        return
+        
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     # === 1. YouTube取得 ===
