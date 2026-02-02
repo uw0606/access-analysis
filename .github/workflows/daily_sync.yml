@@ -1,0 +1,41 @@
+name: UVERworld Data Sync
+
+on:
+  schedule:
+    # GitHub ActionsはUTC時間なので、JST 24:00 (0:00) は UTC 15:00
+    - cron: '0 15 * * *'       # 毎日 15:00 UTC (JST 0:00)
+    - cron: '0 15 * * 0'       # 毎週日曜 15:00 UTC (JST 0:00)
+  workflow_dispatch:           # 手動実行ボタンも追加
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 supabase
+
+      - name: Run Daily Sync (YouTube & SNS)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          python uver_to_supabase.py
+          python sns_to_supabase.py
+
+      - name: Run Weekly Sync (Official Schedule)
+        if: github.event.schedule == '0 15 * * 0' || github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python sync_all_data.py
