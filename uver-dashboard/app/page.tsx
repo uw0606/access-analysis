@@ -1,13 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+// ↓ 修正: 共通設定ファイルをインポート
+import { supabase } from "./supabase"; 
 import { 
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// ↓ 修正: 不要な直接定義を削除 (supabase.tsで一括管理するため)
 
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
@@ -44,6 +43,11 @@ export default function Home() {
     const fetchData = async () => {
       setLoading(true);
       try {
+        // Supabase接続確認
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+            console.warn("Waiting for Environment Variables...");
+        }
+
         const { data: stats } = await supabase
           .from("youtube_stats")
           .select("*")
@@ -188,7 +192,6 @@ export default function Home() {
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ bottom: 0, top: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
-                {/* dy=5, height=80 で日付ラベルの下に十分なスペースを確保 */}
                 <XAxis dataKey="name" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} dy={5} height={100} />
                 <YAxis stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                 
@@ -243,12 +246,11 @@ export default function Home() {
                         {dayEvents.map((ev, index) => {
                           const currentY = dotBaseY + (index * 13);
                           
-                          // カテゴリーに応じた色の振り分け
-                          let evColor = '#52525b'; // default: zinc
-                          if (ev.category === 'LIVE') evColor = '#ef4444';    // 赤
-                          if (ev.category === 'RELEASE') evColor = '#eab308'; // 黄
-                          if (ev.category === 'TV') evColor = '#10b981';      // 緑
-                          if (ev.category === 'OTHER') evColor = '#3b82f6';   // 青
+                          let evColor = '#52525b';
+                          if (ev.category === 'LIVE') evColor = '#ef4444';
+                          if (ev.category === 'RELEASE') evColor = '#eab308';
+                          if (ev.category === 'TV') evColor = '#10b981';
+                          if (ev.category === 'OTHER') evColor = '#3b82f6';
 
                           return (
                             <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">

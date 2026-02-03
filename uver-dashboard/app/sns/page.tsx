@@ -1,13 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+// ↓ 修正: 共通設定ファイルをインポート (1つ上の階層にあるので ../supabase)
+import { supabase } from "../supabase"; 
 import { 
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// ↓ 修正: 不要な直接定義を削除
 
 const SNS_LINKS: { [key: string]: string } = {
   youtube: "https://www.youtube.com/@uverworldSMEJ",
@@ -26,30 +25,35 @@ export default function SnsStats() {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
 
   const fetchData = async () => {
-    const { data: stats, error } = await supabase
-      .from("sns_stats")
-      .select("*")
-      .order('created_at', { ascending: true });
+    try {
+      const { data: stats, error } = await supabase
+        .from("sns_stats")
+        .select("*")
+        .order('created_at', { ascending: true });
 
-    const { data: eventData } = await supabase.from("calendar_events").select("*");
-    setEvents(eventData || []);
+      const { data: eventData } = await supabase.from("calendar_events").select("*");
+      setEvents(eventData || []);
 
-    if (error) {
-      console.error(error);
-    } else if (stats) {
-      const processed = stats.map((item) => {
-        const platformHistory = stats.filter(s => s.platform === item.platform);
-        const currentIndex = platformHistory.indexOf(item);
-        const prev = currentIndex > 0 ? platformHistory[currentIndex - 1] : null;
-        return {
-          ...item,
-          date: new Date(item.created_at).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }),
-          diff: prev ? item.follower_count - prev.follower_count : 0
-        };
-      });
-      setData(processed);
+      if (error) {
+        console.error(error);
+      } else if (stats) {
+        const processed = stats.map((item) => {
+          const platformHistory = stats.filter(s => s.platform === item.platform);
+          const currentIndex = platformHistory.indexOf(item);
+          const prev = currentIndex > 0 ? platformHistory[currentIndex - 1] : null;
+          return {
+            ...item,
+            date: new Date(item.created_at).toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' }),
+            diff: prev ? item.follower_count - prev.follower_count : 0
+          };
+        });
+        setData(processed);
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -147,7 +151,7 @@ export default function SnsStats() {
               
               <Line
                 yAxisId="left"
-                dataKey="follower_count" // ダミーキーとして使用し、dot関数内でイベント判定を行う
+                dataKey="follower_count"
                 stroke="none"
                 name="Events"
                 isAnimationActive={false}
@@ -189,7 +193,6 @@ export default function SnsStats() {
           </ResponsiveContainer>
         </div>
 
-        {/* ... テーブル部分は変更なし ... */}
         <div className="rounded-lg border border-zinc-800 bg-black/40 overflow-hidden">
           <div className="max-h-[240px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
             <table className="w-full text-[10px] font-mono border-separate border-spacing-0">

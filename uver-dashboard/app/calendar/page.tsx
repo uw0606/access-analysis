@@ -1,9 +1,10 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+// ↓ 修正: 共通設定ファイルをインポート (../supabase)
+import { supabase } from "../supabase"; 
 import Link from "next/link";
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+// ↓ 修正: 直接の createClient 定義を削除
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<any[]>([]);
@@ -17,15 +18,24 @@ export default function CalendarPage() {
   useEffect(() => { fetchEvents(); }, []);
 
   const fetchEvents = async () => {
-    const { data } = await supabase.from("calendar_events").select("*").order("event_date", { ascending: false });
-    setEvents(data || []);
+    try {
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .select("*")
+        .order("event_date", { ascending: false });
+      
+      if (error) throw error;
+      setEvents(data || []);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    }
   };
 
   // カテゴリーに応じた色を返す関数
   const getCategoryColor = (cat: string) => {
     switch (cat) {
       case 'LIVE': return 'bg-red-600 text-white';
-      case 'RELEASE': return 'bg-yellow-500 text-black'; // 黄色は黒文字の方が見やすい
+      case 'RELEASE': return 'bg-yellow-500 text-black'; 
       case 'TV': return 'bg-emerald-500 text-white';
       case 'OTHER': return 'bg-blue-600 text-white';
       default: return 'bg-zinc-700 text-zinc-300';
@@ -35,20 +45,29 @@ export default function CalendarPage() {
   const handleSave = async () => {
     if (!date || !title) return alert("日付とタイトルを入力してください");
     
-    if (editingId) {
-      const { error } = await supabase.from("calendar_events").update({ event_date: date, title, category, description }).eq("id", editingId);
-      if (!error) {
-        setEditingId(null);
-        alert("更新しました");
+    try {
+      if (editingId) {
+        const { error } = await supabase
+          .from("calendar_events")
+          .update({ event_date: date, title, category, description })
+          .eq("id", editingId);
+        if (!error) {
+          setEditingId(null);
+          alert("更新しました");
+        }
+      } else {
+        const { error } = await supabase
+          .from("calendar_events")
+          .insert([{ event_date: date, title, category, description }]);
+        if (!error) alert("登録しました");
       }
-    } else {
-      const { error } = await supabase.from("calendar_events").insert([{ event_date: date, title, category, description }]);
-      if (!error) alert("登録しました");
-    }
 
-    setTitle("");
-    setDescription("");
-    fetchEvents();
+      setTitle("");
+      setDescription("");
+      fetchEvents();
+    } catch (err) {
+      console.error("Save error:", err);
+    }
   };
 
   const handleEdit = (event: any) => {
