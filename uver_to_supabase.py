@@ -1,13 +1,33 @@
 import os
 import requests
 from supabase import create_client
+from dotenv import load_dotenv
 
-# GitHub Actions環境では Secrets から直接読み込むため load_dotenv は不要です
+# --- 1. 環境変数の読み込み設定 ---
+# .env や .env.local が存在する場合のみ読み込む（GitHub Actions環境では無視されます）
+if os.path.exists(".env.local"):
+    load_dotenv(".env.local")
+elif os.path.exists(".env"):
+    load_dotenv(".env")
 
-# --- 設定値 ---
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# --- 2. 設定値の取得 ---
+# GitHub Secrets または ローカルファイルから取得
+# Next.js形式 (NEXT_PUBLIC_...) にも対応
+SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+
+# --- 3. 起動チェック ---
+def check_config():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("❌ エラー: SUPABASE の設定が見つかりません。")
+        # セキュリティのため、GitHub Actions上では詳細を伏せつつ成否だけ表示
+        print(f"DEBUG: URL設定={bool(SUPABASE_URL)}, KEY設定={bool(SUPABASE_KEY)}")
+        return False
+    
+    if not YOUTUBE_API_KEY:
+        print("⚠️ 警告: YOUTUBE_API_KEY が設定されていません。YouTubeデータの取得に失敗します。")
+    return True
 
 # 曲名リスト（video_id: 表示名）
 SONG_LIST = {
@@ -85,12 +105,11 @@ SONG_LIST = {
 }
 
 def fetch_and_save():
+    if not check_config():
+        exit(1)
+
     print("--- 📺 YouTube動画統計データ取得開始 ---")
     
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        print("❌ エラー: SUPABASE の設定が見つかりません。")
-        return
-
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     for video_id, song_name in SONG_LIST.items():
@@ -111,14 +130,14 @@ def fetch_and_save():
                 }
                 
                 supabase.table("youtube_stats").insert(data).execute()
-                print(f"✅ {song_name}: {views:,} views (Released: {published_at})")
+                print(f"✅ {song_name}: {views:,} views")
             else:
                 print(f"⚠️ {song_name}: データが見つかりませんでした (ID: {video_id})")
         
         except Exception as e:
             print(f"❌ {song_name} 処理エラー: {e}")
 
-    print("--- ✨ 動画統計の更新が完了しました ---")
+    print("--- ✨ 全データの更新が完了しました ---")
 
 if __name__ == "__main__":
     fetch_and_save()
