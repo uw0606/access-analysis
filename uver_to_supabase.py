@@ -1,27 +1,18 @@
 import os
 import requests
 from supabase import create_client
-from dotenv import load_dotenv
 
-# --- 1. 環境変数の読み込み設定 ---
-# .env や .env.local が存在する場合のみ読み込む（GitHub Actions環境では無視されます）
-if os.path.exists(".env.local"):
-    load_dotenv(".env.local")
-elif os.path.exists(".env"):
-    load_dotenv(".env")
-
-# --- 2. 設定値の取得 ---
-# GitHub Secrets または ローカルファイルから取得
-# Next.js形式 (NEXT_PUBLIC_...) にも対応
+# --- 1. 設定値の取得 ---
+# GitHub Secrets または環境変数から直接取得します
+# ローカルで動かす場合は、ターミナルで export SUPABASE_URL=... と設定するか、直接書き込んでください
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
-# --- 3. 起動チェック ---
+# --- 2. 起動チェック ---
 def check_config():
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("❌ エラー: SUPABASE の設定が見つかりません。")
-        # セキュリティのため、GitHub Actions上では詳細を伏せつつ成否だけ表示
         print(f"DEBUG: URL設定={bool(SUPABASE_URL)}, KEY設定={bool(SUPABASE_KEY)}")
         return False
     
