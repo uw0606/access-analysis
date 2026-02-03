@@ -31,10 +31,10 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
           python uver_to_supabase.py
-          python sns_to_supabase.py
+          # Instagramのエラー回避のため一時的に停止
+          # python sns_to_supabase.py
 
       - name: Run Weekly Sync (Official Schedule)
-        # 毎日実行するか、日曜だけにするか選べますが、一旦手動でも動くように設定
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
