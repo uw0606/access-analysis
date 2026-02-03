@@ -1,10 +1,9 @@
 import os
 import requests
 from supabase import create_client
+from datetime import datetime, timedelta, timezone
 
 # --- 1. 設定値の取得 ---
-# GitHub Secrets または環境変数から直接取得します
-# ローカルで動かす場合は、ターミナルで export SUPABASE_URL=... と設定するか、直接書き込んでください
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -13,14 +12,10 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 def check_config():
     if not SUPABASE_URL or not SUPABASE_KEY:
         print("❌ エラー: SUPABASE の設定が見つかりません。")
-        print(f"DEBUG: URL設定={bool(SUPABASE_URL)}, KEY設定={bool(SUPABASE_KEY)}")
         return False
-    
-    if not YOUTUBE_API_KEY:
-        print("⚠️ 警告: YOUTUBE_API_KEY が設定されていません。YouTubeデータの取得に失敗します。")
     return True
 
-# 曲名リスト（video_id: 表示名）
+# 曲名リスト (video_id: 表示名)
 SONG_LIST = {
     'ukyRC_fNEP0': "『THE OVER』",
     'F4GAkjShwjE': "『Don't Think.Feel』",
@@ -104,6 +99,7 @@ def fetch_and_save():
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     for video_id, song_name in SONG_LIST.items():
+        # statistics(視聴回数)とsnippet(公開日)の両方を取得
         yt_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id={video_id}&key={YOUTUBE_API_KEY}"
         try:
             res = requests.get(yt_url).json()
@@ -111,19 +107,22 @@ def fetch_and_save():
             if 'items' in res and len(res['items']) > 0:
                 item = res['items'][0]
                 views = int(item['statistics']['viewCount'])
-                published_at = item['snippet']['publishedAt'][:10]
+                
+                # 動画の公開日を取得
+                published_at_raw = item['snippet']['publishedAt'][:10]
                 
                 data = {
                     "title": song_name,
                     "views": views,
                     "video_id": video_id,
-                    "published_at": published_at 
+                    "published_at": published_at_raw  # ここに動画公開日(text)を入れる
                 }
                 
+                # Supabaseに挿入
                 supabase.table("youtube_stats").insert(data).execute()
-                print(f"✅ {song_name}: {views:,} views")
+                print(f"✅ {song_name}: {views:,} views (公開日: {published_at_raw})")
             else:
-                print(f"⚠️ {song_name}: データが見つかりませんでした (ID: {video_id})")
+                print(f"⚠️ {song_name}: データが見つかりませんでした")
         
         except Exception as e:
             print(f"❌ {song_name} 処理エラー: {e}")
