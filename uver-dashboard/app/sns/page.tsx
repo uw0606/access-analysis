@@ -41,7 +41,9 @@ export default function SnsStats() {
 
   const fetchData = async () => {
     try {
-      // 1. 全てのSNS統計を取得
+      setLoading(true);
+      // キャッシュを避けるため、クエリにランダムな要素を含めるか、明示的に取得
+      // 1. 全てのSNS統計を取得（最新順で取得して、後で反転させる）
       const { data: stats, error } = await supabase
         .from("sns_stats")
         .select("*")
@@ -52,33 +54,37 @@ export default function SnsStats() {
       setEvents(eventData || []);
 
       if (error) {
-        console.error(error);
+        console.error("Supabase Error:", error.message);
       } else if (stats) {
-        // 各プラットフォームごとに、1日1データになるよう整理
-        const processed = stats.map((item, index, self) => {
+        // 同一プラットフォーム・同一日付のデータが複数ある場合、最新のものだけを残す
+        const map = new Map();
+        stats.forEach(item => {
           const dateKey = formatDate(item.created_at);
+          const compositeKey = `${item.platform}_${dateKey}`;
+          // 常に新しいID（＝後から追加されたもの）で上書き
+          map.set(compositeKey, { ...item, fullDate: dateKey });
+        });
+
+        const latestDailyStats = Array.from(map.values());
+
+        // 差分計算用のロジック
+        const processed = latestDailyStats.map((item) => {
+          // 同じプラットフォームの全履歴を日付順に並べる
+          const platformHistory = latestDailyStats
+            .filter(s => s.platform === item.platform)
+            .sort((a, b) => a.fullDate.localeCompare(b.fullDate));
           
-          // 同じプラットフォームの履歴を抽出
-          const platformHistory = self.filter(s => s.platform === item.platform);
-          const currentIndex = platformHistory.indexOf(item);
-          
-          // 前回のデータとの差分を計算
+          const currentIndex = platformHistory.findIndex(s => s.id === item.id);
           const prev = currentIndex > 0 ? platformHistory[currentIndex - 1] : null;
           
           return {
             ...item,
-            fullDate: dateKey,
-            date: formatChartDate(dateKey),
+            date: formatChartDate(item.fullDate),
             diff: prev ? item.follower_count - prev.follower_count : 0
           };
         });
 
-        // 同一プラットフォーム・同一日付のデータが複数ある場合、最新のものだけを残す
-        const uniqueData = processed.filter((item, index, self) => 
-          index === self.findLastIndex(t => t.platform === item.platform && t.fullDate === item.fullDate)
-        );
-
-        setData(uniqueData);
+        setData(processed);
       }
     } catch (err) {
       console.error("Fetch error:", err);
@@ -113,7 +119,11 @@ export default function SnsStats() {
   };
 
   const renderSnsSection = (title: string, platform: string, color: string) => {
-    const platformData = data.filter(d => d.platform === platform);
+    // 日付順に並び替え
+    const platformData = data
+      .filter(d => d.platform === platform)
+      .sort((a, b) => a.fullDate.localeCompare(b.fullDate));
+      
     const latest = platformData[platformData.length - 1];
 
     return (
@@ -127,7 +137,7 @@ export default function SnsStats() {
               <a href={SNS_LINKS[platform]} target="_blank" rel="noopener noreferrer" className="text-[8px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-all flex items-center gap-1 uppercase tracking-tighter">Link ↗</a>
             </div>
             <div className="text-3xl font-mono font-bold">
-              {latest?.follower_count.toLocaleString() ?? "---"} 
+              {latest?.follower_count?.toLocaleString() ?? "---"} 
               <span className="text-[10px] text-zinc-500 ml-2 uppercase font-normal tracking-widest">Total</span>
             </div>
           </div>
@@ -149,7 +159,9 @@ export default function SnsStats() {
               <Tooltip 
                 content={({ active, payload, label }) => {
                   if (!active || !payload) return null;
-                  const currentFullDate = platformData.find(d => d.date === label)?.fullDate;
+                  const item = platformData.find(d => d.date === label);
+                  if (!item) return null;
+                  const currentFullDate = item.fullDate;
                   const dayEvents = events.filter(e => formatDate(e.event_date) === currentFullDate);
                   
                   return (
@@ -159,7 +171,7 @@ export default function SnsStats() {
                         p.name !== "Events" && (
                           <div key={p.name} className="flex justify-between gap-6 py-0.5">
                             <span style={{ color: p.color }} className="font-bold">{p.name}</span>
-                            <span className="font-mono text-zinc-300">{p.value.toLocaleString()}</span>
+                            <span className="font-mono text-zinc-300">{p.value?.toLocaleString()}</span>
                           </div>
                         )
                       ))}
@@ -179,33 +191,6 @@ export default function SnsStats() {
               <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '25px' }} />
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
               
-              {/* イベントドット表示用の invisible line */}
-              <Line
-                yAxisId="left" dataKey="follower_count" stroke="none" name="Events" isAnimationActive={false}
-                dot={(props) => {
-                  const { cx, payload } = props;
-                  if (!cx) return <React.Fragment key={Math.random()} />;
-                  const dayEvents = events.filter(e => formatDate(e.event_date) === payload.fullDate);
-                  const dotBaseY = 360; 
-                  return (
-                    <g key={`ev-sns-${payload.id}`}>
-                      {dayEvents.map((ev, index) => {
-                        const currentY = dotBaseY + (index * 13);
-                        let evColor = '#ef4444'; // Default to LIVE red
-                        if (ev.category === 'RELEASE') evColor = '#eab308';
-                        if (ev.category === 'TV') evColor = '#10b981';
-                        return (
-                          <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
-                            <circle cx={cx} cy={currentY} r={5} fill={evColor} opacity={0.2} className="animate-ping" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} />
-                            <circle cx={cx} cy={currentY} r={2.5} fill={evColor} />
-                          </g>
-                        );
-                      })}
-                    </g>
-                  );
-                }}
-              />
-
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -227,9 +212,9 @@ export default function SnsStats() {
                 {platformData.slice().reverse().map((item) => (
                   <tr key={item.id} className="hover:bg-white/5 transition-colors">
                     <td className="p-3 text-zinc-400 font-bold border-b border-zinc-800/30">{item.fullDate}</td>
-                    <td className="p-3 text-right font-bold border-b border-zinc-800/30">{item.follower_count.toLocaleString()}</td>
+                    <td className="p-3 text-right font-bold border-b border-zinc-800/30">{item.follower_count?.toLocaleString()}</td>
                     <td className={`p-3 text-right font-bold border-b border-zinc-800/30 ${item.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {item.diff > 0 ? `+${item.diff.toLocaleString()}` : item.diff.toLocaleString()}
+                      {item.diff > 0 ? `+${item.diff.toLocaleString()}` : item.diff?.toLocaleString()}
                     </td>
                     <td className="p-3 text-center border-b border-zinc-800/30">
                       <button onClick={() => handleDelete(item.id)} className="text-zinc-700 hover:text-red-500 transition-colors uppercase text-[8px] font-black">Delete</button>
@@ -248,30 +233,13 @@ export default function SnsStats() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 md:p-12 relative">
-      {/* イベント詳細モーダル */}
-      {selectedEvent && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
-            <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
-            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 ${selectedEvent.category === 'LIVE' ? 'bg-red-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
-              {selectedEvent.category}
-            </div>
-            <p className="text-zinc-500 font-mono text-[9px] mb-1">{selectedEvent.event_date}</p>
-            <h2 className="text-xl font-black italic uppercase leading-tight mb-4 tracking-tighter">{selectedEvent.title}</h2>
-            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 text-[11px] leading-relaxed whitespace-pre-wrap">
-              {selectedEvent.description || "詳細情報はありません。"}
-            </div>
-          </div>
-        </div>
-      )}
-
       <header className="mb-12 max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 border-b border-zinc-800 pb-8">
         <div>
           <h1 className="text-3xl font-black italic uppercase tracking-tighter">SNS <span className="text-red-600">Analytics</span></h1>
           <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Follower Growth & Social Impact</p>
         </div>
         <div className="flex gap-4">
+          <button onClick={fetchData} className="text-[10px] border border-zinc-700 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest">↻ Refresh Data</button>
           <a href="/" className="text-[10px] border border-zinc-700 px-6 py-2 rounded-full hover:bg-white hover:text-black transition-all font-bold uppercase tracking-widest">← Video Analytics</a>
         </div>
       </header>
