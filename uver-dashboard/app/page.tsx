@@ -1,17 +1,16 @@
 "use client";
 import React, { useEffect, useState } from "react";
-// ↓ 修正: 共通設定ファイルをインポート
 import { supabase } from "./supabase"; 
 import { 
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-// ↓ 修正: 不要な直接定義を削除 (supabase.tsで一括管理するため)
-
+// 日付フォーマットを「created_at（統計取得日）」から生成するように修正
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "---";
+  // 日本時間に変換して YYYY/MM/DD 形式にする
   return d.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
 };
 
@@ -20,6 +19,7 @@ const formatChartDate = (dateStr: string) => {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 };
 
+// 新譜かどうかの判定（動画の公開日から30日以内か）
 const isNewRelease = (publishedAt: string) => {
   if (!publishedAt || publishedAt === "---") return false;
   const pubDate = new Date(publishedAt.replace(/\//g, '-'));
@@ -43,11 +43,7 @@ export default function Home() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Supabase接続確認
-        if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-            console.warn("Waiting for Environment Variables...");
-        }
-
+        // 全データを取得（古い順に並べて履歴を作る）
         const { data: stats } = await supabase
           .from("youtube_stats")
           .select("*")
@@ -57,19 +53,22 @@ export default function Home() {
         setEvents(eventData || []);
 
         if (stats && stats.length > 0) {
+          // 修正ポイント: published_at ではなく created_at からユニークな日付（統計日）を抽出
           const uniqueDates = Array.from(new Set(stats.map(s => formatDate(s.created_at)))).filter(d => d !== "---");
           setDates(uniqueDates);
 
           const songsMap: { [key: string]: any } = {};
           stats.forEach(s => {
-            const dateStr = formatDate(s.created_at);
+            const dateStr = formatDate(s.created_at); // 統計を取得した日
             if (dateStr === "---") return;
+            
             if (!songsMap[s.title]) {
               songsMap[s.title] = {
                 artist: "UVERworld",
                 title: s.title,
                 videoId: s.video_id,
-                publishedAt: s.published_at ? s.published_at.split('T')[0].replace(/-/g, '/') : "---",
+                // 動画の公開日を表示用に整形
+                publishedAt: s.published_at ? s.published_at.replace(/-/g, '/') : "---",
                 history: {} 
               };
             }
@@ -90,7 +89,8 @@ export default function Home() {
             songsArray.forEach((s: any) => {
               const currentViews = s.history[date] || 0;
               const prevViews = prevDate ? s.history[prevDate] : null;
-              const inc = prevViews !== null ? currentViews - prevViews : 0;
+              // 前日との差分（増加数）を計算
+              const inc = (prevViews !== null && currentViews >= prevViews) ? currentViews - prevViews : 0;
               s.history[`${date}_inc`] = inc;
               
               if (chartIdx !== -1) {
@@ -99,6 +99,7 @@ export default function Home() {
               }
             });
 
+            // ランキング等の計算
             const viewsList = [...songsArray].sort((a, b) => (b.history[date] || 0) - (a.history[date] || 0));
             viewsList.forEach((s, rIdx) => { s.history[`${date}_v_rank`] = rIdx + 1; });
 
