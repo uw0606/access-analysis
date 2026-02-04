@@ -1,4 +1,9 @@
 "use client";
+
+// Next.jsの静的最適化を無効化し、常に最新のSupabaseデータを取得するように設定
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabase"; 
 import { 
@@ -96,7 +101,7 @@ export default function Home() {
           songsMap[s.title].history[dateStr] = Number(s.views);
         });
 
-        // 3. グラフ用データの構築（ChartPoint型を適用）
+        // 3. グラフ用データの構築
         const tempChartData: ChartPoint[] = uniqueDates.map(date => ({
           name: formatChartDate(date),
           fullDate: date,
@@ -122,7 +127,6 @@ export default function Home() {
             s.history[`${date}_inc`] = inc;
             
             if (chartIdx !== -1) {
-              // 型定義のおかげでここでエラーが出なくなります
               tempChartData[chartIdx][s.title] = inc;
               tempChartData[chartIdx].totalGrowth += inc;
             }
