@@ -5,21 +5,21 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-// 日付フォーマットを「created_at（統計取得日）」から YYYY/MM/DD 形式で生成
+// 日付フォーマットを JST(日本時間)基準で YYYY/MM/DD に固定
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "---";
   
-  // 日本時間に合わせた日付文字列を作成
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  // 日本時間に変換するためのオフセット調整（UTC+9）
+  const jstDate = new Date(d.getTime() + (9 * 60 * 60 * 1000));
+  const y = jstDate.getUTCFullYear();
+  const m = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(jstDate.getUTCDate()).padStart(2, '0');
   return `${y}/${m}/${day}`;
 };
 
 const formatChartDate = (dateStr: string) => {
-  // YYYY/MM/DD -> M/D に変換
   const parts = dateStr.split('/');
   if (parts.length < 3) return dateStr;
   return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
@@ -44,101 +44,120 @@ export default function Home() {
   const [selectedSong, setSelectedSong] = useState<string>("");
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        // 全データを取得（古い順）
-        const { data: stats } = await supabase
-          .from("youtube_stats")
-          .select("*")
-          .order('created_at', { ascending: true });
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // 🚨 件数制限を大幅に増やして全データを確実に取得
+      const { data: stats, error: statsError } = await supabase
+        .from("youtube_stats")
+        .select("*")
+        .order('created_at', { ascending: true })
+        .limit(4000); 
 
-        const { data: eventData } = await supabase.from("calendar_events").select("*");
-        setEvents(eventData || []);
+      const { data: eventData } = await supabase.from("calendar_events").select("*");
+      setEvents(eventData || []);
 
-        if (stats && stats.length > 0) {
-          // ユニークな日付リストを作成
-          const uniqueDates = Array.from(new Set(stats.map(s => formatDate(s.created_at))))
-            .filter(d => d !== "---");
-          setDates(uniqueDates);
+      if (statsError) throw statsError;
 
-          const songsMap: { [key: string]: any } = {};
+      if (stats && stats.length > 0) {
+        // 1. 日付ごとのユニークなリストを作成
+        const dateSet = new Set<string>();
+        stats.forEach(s => {
+          const d = formatDate(s.created_at);
+          if (d !== "---") dateSet.add(d);
+        });
+        const uniqueDates = Array.from(dateSet).sort();
+        setDates(uniqueDates);
+
+        // 2. 動画ごとのデータを集約
+        const songsMap: { [key: string]: any } = {};
+        
+        stats.forEach(s => {
+          const dateStr = formatDate(s.created_at);
+          if (dateStr === "---") return;
           
-          stats.forEach(s => {
-            const dateStr = formatDate(s.created_at);
-            if (dateStr === "---") return;
-            
-            if (!songsMap[s.title]) {
-              songsMap[s.title] = {
-                artist: "UVERworld",
-                title: s.title,
-                videoId: s.video_id,
-                publishedAt: s.published_at ? s.published_at.replace(/-/g, '/') : "---",
-                history: {} 
-              };
+          if (!songsMap[s.title]) {
+            songsMap[s.title] = {
+              artist: "UVERworld",
+              title: s.title,
+              videoId: s.video_id,
+              publishedAt: s.published_at ? s.published_at.replace(/-/g, '/') : "---",
+              history: {} 
+            };
+          }
+          // 同一日のデータがある場合は最新を保持
+          songsMap[s.title].history[dateStr] = Number(s.views);
+        });
+
+        // 3. グラフ用データの構築
+        const tempChartData = uniqueDates.map(date => ({
+          name: formatChartDate(date),
+          fullDate: date,
+          totalGrowth: 0
+        }));
+
+        const songsArray = Object.values(songsMap);
+
+        uniqueDates.forEach((date, idx) => {
+          const prevDate = uniqueDates[idx - 1];
+          const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
+
+          songsArray.forEach((s: any) => {
+            const currentViews = s.history[date] || 0;
+            // 前日のデータがない場合はさらに遡って直近のデータを探す（データ欠損対策）
+            let prevViews = null;
+            if (prevDate) {
+              prevViews = s.history[prevDate];
             }
-            // 同一日のデータが複数ある場合は最新（後のデータ）を保持
-            songsMap[s.title].history[dateStr] = Number(s.views);
+            
+            let inc = 0;
+            if (prevViews !== null && currentViews > 0) {
+              inc = currentViews - prevViews;
+              if (inc < 0) inc = 0; 
+            }
+            
+            s.history[`${date}_inc`] = inc;
+            
+            if (chartIdx !== -1) {
+              tempChartData[chartIdx][s.title] = inc;
+              tempChartData[chartIdx].totalGrowth += inc;
+            }
           });
 
-          const tempChartData: any[] = uniqueDates.map(date => ({
-            name: formatChartDate(date),
-            fullDate: date,
-            totalGrowth: 0
-          }));
+          // ランキング計算（再生数順）
+          const viewsList = [...songsArray].sort((a, b) => (b.history[date] || 0) - (a.history[date] || 0));
+          viewsList.forEach((s, rIdx) => { s.history[`${date}_v_rank`] = rIdx + 1; });
 
-          uniqueDates.forEach((date, idx) => {
-            const songsArray = Object.values(songsMap);
-            const prevDate = uniqueDates[idx - 1];
-            const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
-
-            songsArray.forEach((s: any) => {
-              const currentViews = s.history[date] || 0;
-              const prevViews = prevDate ? s.history[prevDate] : null;
-              
-              // 差分計算: 前日データがある場合のみ計算
-              let inc = 0;
-              if (prevViews !== null) {
-                inc = currentViews - prevViews;
-                if (inc < 0) inc = 0; // 再生数が減ることはないので誤差を吸収
-              }
-              
-              s.history[`${date}_inc`] = inc;
-              
-              if (chartIdx !== -1) {
-                tempChartData[chartIdx][s.title] = inc;
-                tempChartData[chartIdx].totalGrowth += inc;
-              }
-            });
-
-            // ランキング
-            const viewsList = [...songsArray].sort((a, b) => (b.history[date] || 0) - (a.history[date] || 0));
-            viewsList.forEach((s, rIdx) => { s.history[`${date}_v_rank`] = rIdx + 1; });
-
-            const growthList = [...songsArray].sort((a, b) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
-            growthList.forEach((s, rIdx) => {
-              const currentGRank = rIdx + 1;
-              const prevGRank = prevDate ? s.history[`${prevDate}_g_rank`] : null;
-              s.history[`${date}_g_rank`] = currentGRank;
-              if (!prevGRank) s.history[`${date}_diff`] = "new";
-              else if (currentGRank < prevGRank) s.history[`${date}_diff`] = "up";
-              else if (currentGRank > prevGRank) s.history[`${date}_diff`] = "down";
-              else s.history[`${date}_diff`] = "keep";
-            });
+          // 伸び率ランキング計算
+          const growthList = [...songsArray].sort((a, b) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
+          growthList.forEach((s, rIdx) => {
+            const currentGRank = rIdx + 1;
+            const prevGRank = prevDate ? s.history[`${prevDate}_g_rank`] : null;
+            s.history[`${date}_g_rank`] = currentGRank;
+            if (!prevGRank) s.history[`${date}_diff`] = "new";
+            else if (currentGRank < prevGRank) s.history[`${date}_diff`] = "up";
+            else if (currentGRank > prevGRank) s.history[`${date}_diff`] = "down";
+            else s.history[`${date}_diff`] = "keep";
           });
+        });
 
-          const lastDate = uniqueDates[uniqueDates.length - 1];
-          const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
-            (b.history[`${lastDate}_inc`] || 0) - (a.history[`${lastDate}_inc`] || 0)
-          );
-          
-          setTableData(sortedResult);
-          setChartData(tempChartData);
-          if (sortedResult.length > 0) setSelectedSong(sortedResult[0].title);
-        }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
-    };
+        const lastDate = uniqueDates[uniqueDates.length - 1];
+        const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
+          (b.history[`${lastDate}_inc`] || 0) - (a.history[`${lastDate}_inc`] || 0)
+        );
+        
+        setTableData(sortedResult);
+        setChartData(tempChartData);
+        if (sortedResult.length > 0) setSelectedSong(sortedResult[0].title);
+      }
+    } catch (err) { 
+      console.error("Fetch error:", err); 
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -153,10 +172,11 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 md:p-12 font-sans text-[10px] relative">
+      {/* イベント詳細モーダル */}
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
             <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 ${selectedEvent.category === 'LIVE' ? 'bg-red-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
               {selectedEvent.category}
@@ -177,15 +197,17 @@ export default function Home() {
             <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
           </div>
           <div className="flex gap-3">
+            <button onClick={fetchData} className="text-[9px] border border-zinc-800 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest">↻ Refresh</button>
             <a href="/calendar" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">📅 Calendar</a>
             <a href="/sns" className="text-[9px] bg-white text-black px-5 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">SNS Stats →</a>
           </div>
         </header>
 
+        {/* グラフセクション */}
         <div className="mb-12 bg-zinc-900/40 p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex items-center gap-4">
-              <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics (2/2 - Today)</h2>
+              <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics</h2>
               <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
                 {(['top5', 'total', 'single'] as const).map((mode) => (
                   <button key={mode} onClick={() => setViewMode(mode)} className={`px-4 py-1.5 rounded-md text-[8px] font-black transition-all uppercase ${viewMode === mode ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
@@ -211,6 +233,7 @@ export default function Home() {
                 <Tooltip 
                   content={({ active, payload, label }) => {
                     if (!active || !payload) return null;
+                    const chartItem = chartData.find(d => d.name === label);
                     const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === label);
                     return (
                       <div className="bg-black/90 border border-zinc-800 p-3 rounded-lg text-[10px] shadow-2xl backdrop-blur-md">
@@ -235,6 +258,7 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '9px', paddingBottom: '25px' }} />
                 
+                {/* イベントアイコン */}
                 <Line
                   dataKey="totalGrowth" stroke="none" name="Events" isAnimationActive={false}
                   dot={(props) => {
@@ -246,8 +270,7 @@ export default function Home() {
                       <g key={`ev-group-${payload.name}`} style={{ overflow: 'visible' }}>
                         {dayEvents.map((ev, index) => {
                           const currentY = dotBaseY + (index * 13);
-                          let evColor = '#52525b';
-                          if (ev.category === 'LIVE') evColor = '#ef4444';
+                          let evColor = '#ef4444';
                           if (ev.category === 'RELEASE') evColor = '#eab308';
                           if (ev.category === 'TV') evColor = '#10b981';
                           return (
@@ -272,6 +295,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* データテーブル */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[9px]">
             <thead>
