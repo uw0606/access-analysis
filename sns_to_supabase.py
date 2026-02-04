@@ -26,7 +26,6 @@ def get_tiktok_followers(username):
             "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
         }
         response = requests.get(url, headers=headers, timeout=15)
-        # JSONデータ内の followerCount を探す
         match = re.search(r'"followerCount":(\d+)', response.text)
         if match:
             return int(match.group(1))
@@ -59,20 +58,25 @@ def update_sns_data():
             print(f"✅ YouTube成功: {yt_count}人")
             supabase.table("sns_stats").insert({"platform": "youtube", "follower_count": yt_count}).execute()
         else:
-            print(f"❌ YouTube取得失敗: {res.get('error', 'Unknown Error')}")
+            print("❌ YouTube取得失敗")
     except Exception as e:
         print(f"❌ YouTubeエラー: {e}")
 
     # === 2. Instagram取得 (Official & TAKUYA∞) ===
-    # instaloaderのインスタンスを作成（User-Agentを少し偽装）
-    loader = instaloader.Instaloader(user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1")
+    # fatal_error_codes={429} を設定して、429発生時に自動リトライ(30分待機)せず即例外を出すようにする
+    loader = instaloader.Instaloader(
+        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1",
+        fatal_error_codes={400, 401, 403, 429}
+    )
     
-    for target in INSTAGRAM_ACCOUNTS:
+    for idx, target in enumerate(INSTAGRAM_ACCOUNTS):
         try:
-            print(f"⏳ Instagram({target['username']}) 取得中...")
-            # 連続アクセスによる制限を避けるため少し待機
-            time.sleep(5) 
+            # 2つ目以降のアカウント取得前に長めの待機（60秒）を入れる
+            if idx > 0:
+                print(f"⏳ 連続アクセス制限(429)回避のため、60秒待機します...")
+                time.sleep(60)
             
+            print(f"⏳ Instagram({target['username']}) 取得中...")
             profile = instaloader.Profile.from_username(loader.context, target["username"])
             insta_count = profile.followers
             
@@ -80,11 +84,12 @@ def update_sns_data():
                 print(f"✅ Instagram({target['username']})成功: {insta_count}人")
                 supabase.table("sns_stats").insert({"platform": target["label"], "follower_count": insta_count}).execute()
             else:
-                print(f"⚠️ Instagram({target['username']})のフォロワー数が取得できませんでした")
+                print(f"⚠️ Instagram({target['username']})の数値が取得できませんでした")
                 
         except Exception as e:
             print(f"❌ Instagram({target['username']})取得エラー: {e}")
-            print("💡 Instagramは現在、ログインなしの取得が厳しく制限されています。")
+            # エラーが出てもリトライでジョブを止めず、スキップして次に進む
+            continue
 
     # === 3. TikTok取得 (TAKUYA∞) ===
     print(f"⏳ TikTok({TIKTOK_USERNAME}) 取得中...")
@@ -96,7 +101,7 @@ def update_sns_data():
         except Exception as e:
             print(f"❌ TikTok保存エラー: {e}")
     else:
-        print("❌ TikTokの自動取得失敗（HTML構造の変化かIP制限の可能性があります）")
+        print("❌ TikTokの自動取得失敗")
 
     print("--- ✨ 全ての処理が完了しました ---")
 
