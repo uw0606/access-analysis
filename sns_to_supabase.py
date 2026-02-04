@@ -26,6 +26,7 @@ def get_tiktok_followers(username):
             "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
         }
         response = requests.get(url, headers=headers, timeout=15)
+        # JSONデータ内の followerCount を探す
         match = re.search(r'"followerCount":(\d+)', response.text)
         if match:
             return int(match.group(1))
@@ -58,15 +59,14 @@ def update_sns_data():
             print(f"✅ YouTube成功: {yt_count}人")
             supabase.table("sns_stats").insert({"platform": "youtube", "follower_count": yt_count}).execute()
         else:
-            print("❌ YouTube取得失敗")
+            print(f"❌ YouTube取得失敗")
     except Exception as e:
         print(f"❌ YouTubeエラー: {e}")
 
     # === 2. Instagram取得 (Official & TAKUYA∞) ===
-    # fatal_error_codes={429} を設定して、429発生時に自動リトライ(30分待機)せず即例外を出すようにする
+    # 引数エラー(TypeError)を避けるため、標準的な初期化に戻します
     loader = instaloader.Instaloader(
-        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1",
-        fatal_error_codes={400, 401, 403, 429}
+        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1"
     )
     
     for idx, target in enumerate(INSTAGRAM_ACCOUNTS):
@@ -87,8 +87,8 @@ def update_sns_data():
                 print(f"⚠️ Instagram({target['username']})の数値が取得できませんでした")
                 
         except Exception as e:
+            # インスタ側で429エラー等が出ても、プログラムを終了させずにスキップしてTikTokへ進みます
             print(f"❌ Instagram({target['username']})取得エラー: {e}")
-            # エラーが出てもリトライでジョブを止めず、スキップして次に進む
             continue
 
     # === 3. TikTok取得 (TAKUYA∞) ===
