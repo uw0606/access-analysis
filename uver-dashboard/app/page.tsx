@@ -1,8 +1,7 @@
 "use client";
 
-// Next.jsの静的最適化を無効化し、常に最新のSupabaseデータを取得するように設定
+// クライアントコンポーネントで動的レンダリングを強制する設定
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabase"; 
@@ -60,7 +59,7 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 🚨 件数制限を大幅に増やして全データを確実に取得
+      // 🚨 常に最新を取得するため、Supabaseからのデータ取得を実行
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
@@ -73,7 +72,6 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
-        // 1. 日付ごとのユニークなリストを作成
         const dateSet = new Set<string>();
         stats.forEach(s => {
           const d = formatDate(s.created_at);
@@ -82,7 +80,6 @@ export default function Home() {
         const uniqueDates = Array.from(dateSet).sort();
         setDates(uniqueDates);
 
-        // 2. 動画ごとのデータを集約
         const songsMap: { [key: string]: any } = {};
         
         stats.forEach(s => {
@@ -101,7 +98,6 @@ export default function Home() {
           songsMap[s.title].history[dateStr] = Number(s.views);
         });
 
-        // 3. グラフ用データの構築
         const tempChartData: ChartPoint[] = uniqueDates.map(date => ({
           name: formatChartDate(date),
           fullDate: date,
@@ -132,7 +128,6 @@ export default function Home() {
             }
           });
 
-          // ランキング計算
           const viewsList = [...songsArray].sort((a, b) => (b.history[date] || 0) - (a.history[date] || 0));
           viewsList.forEach((s, rIdx) => { s.history[`${date}_v_rank`] = rIdx + 1; });
 
