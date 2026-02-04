@@ -4,7 +4,7 @@ on:
   schedule:
     # 毎日 JST 0:00 (UTC 15:00)
     - cron: '0 15 * * *'
-  workflow_dispatch:           # 手動実行ボタン
+  workflow_dispatch:           # 手動実行ボタン（テスト時に便利です）
 
 jobs:
   build:
@@ -21,8 +21,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # requirements.txt がある場合はそれを使用、なければ直接インストール
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests beautifulsoup4 supabase instaloader; fi
+          # インスタ取得のために instaloader を最新版で確実にインストール
+          if [ -f requirements.txt ]; then 
+            pip install -r requirements.txt
+          else 
+            pip install requests beautifulsoup4 supabase instaloader --upgrade
+          fi
 
       - name: Run Daily Sync (YouTube & SNS)
         env:
@@ -30,13 +34,15 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
+          # YouTubeデータの同期
           python uver_to_supabase.py
-          # Instagramのエラー回避のため一時的に停止
-          # python sns_to_supabase.py
+          # SNS（Instagram/TikTok）データの同期を再開
+          python sns_to_supabase.py
 
       - name: Run Weekly Sync (Official Schedule)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
+          # 公式スケジュールの同期
           python sync_all_data.py
