@@ -91,7 +91,7 @@ SONG_LIST = {
     'mvBCb7J8Dy0': "『PHOENIX』(Official Music Video)", 
     'ccXoPztZbrw': "『MMH』(Official Music Video)",
     'bYcYko_g97k': "『Bye-Bye to you』(Official Music Video)", 
-    'prjI8z56xQQ': "『NO MAP』(Official Music Video)"
+    'prjI8z56xQQ': "『NO MAP』(Official Music Video)",
 }
 
 def fetch_and_save():
