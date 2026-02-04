@@ -5,6 +5,14 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
+// チャートデータの型定義（動的なキーを許可）
+type ChartPoint = {
+  name: string;
+  fullDate: string;
+  totalGrowth: number;
+  [key: string]: any; 
+};
+
 // 日付フォーマットを JST(日本時間)基準で YYYY/MM/DD に固定
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
@@ -37,7 +45,7 @@ const isNewRelease = (publishedAt: string) => {
 export default function Home() {
   const [tableData, setTableData] = useState<any[]>([]);
   const [dates, setDates] = useState<string[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [events, setEvents] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"top5" | "total" | "single">("top5");
@@ -85,12 +93,11 @@ export default function Home() {
               history: {} 
             };
           }
-          // 同一日のデータがある場合は最新を保持
           songsMap[s.title].history[dateStr] = Number(s.views);
         });
 
-        // 3. グラフ用データの構築
-        const tempChartData = uniqueDates.map(date => ({
+        // 3. グラフ用データの構築（ChartPoint型を適用）
+        const tempChartData: ChartPoint[] = uniqueDates.map(date => ({
           name: formatChartDate(date),
           fullDate: date,
           totalGrowth: 0
@@ -104,11 +111,7 @@ export default function Home() {
 
           songsArray.forEach((s: any) => {
             const currentViews = s.history[date] || 0;
-            // 前日のデータがない場合はさらに遡って直近のデータを探す（データ欠損対策）
-            let prevViews = null;
-            if (prevDate) {
-              prevViews = s.history[prevDate];
-            }
+            const prevViews = prevDate ? s.history[prevDate] : null;
             
             let inc = 0;
             if (prevViews !== null && currentViews > 0) {
@@ -119,16 +122,16 @@ export default function Home() {
             s.history[`${date}_inc`] = inc;
             
             if (chartIdx !== -1) {
+              // 型定義のおかげでここでエラーが出なくなります
               tempChartData[chartIdx][s.title] = inc;
               tempChartData[chartIdx].totalGrowth += inc;
             }
           });
 
-          // ランキング計算（再生数順）
+          // ランキング計算
           const viewsList = [...songsArray].sort((a, b) => (b.history[date] || 0) - (a.history[date] || 0));
           viewsList.forEach((s, rIdx) => { s.history[`${date}_v_rank`] = rIdx + 1; });
 
-          // 伸び率ランキング計算
           const growthList = [...songsArray].sort((a, b) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
           growthList.forEach((s, rIdx) => {
             const currentGRank = rIdx + 1;
@@ -172,7 +175,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 md:p-12 font-sans text-[10px] relative">
-      {/* イベント詳細モーダル */}
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
@@ -203,7 +205,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* グラフセクション */}
         <div className="mb-12 bg-zinc-900/40 p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex items-center gap-4">
@@ -233,7 +234,6 @@ export default function Home() {
                 <Tooltip 
                   content={({ active, payload, label }) => {
                     if (!active || !payload) return null;
-                    const chartItem = chartData.find(d => d.name === label);
                     const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === label);
                     return (
                       <div className="bg-black/90 border border-zinc-800 p-3 rounded-lg text-[10px] shadow-2xl backdrop-blur-md">
@@ -258,7 +258,6 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '9px', paddingBottom: '25px' }} />
                 
-                {/* イベントアイコン */}
                 <Line
                   dataKey="totalGrowth" stroke="none" name="Events" isAnimationActive={false}
                   dot={(props) => {
@@ -295,7 +294,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* データテーブル */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[9px]">
             <thead>
