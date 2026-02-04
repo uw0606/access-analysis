@@ -5,21 +5,26 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-// 日付フォーマットを「created_at（統計取得日）」から生成するように修正
+// 日付フォーマットを「created_at（統計取得日）」から YYYY/MM/DD 形式で生成
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "---";
-  // 日本時間に変換して YYYY/MM/DD 形式にする
-  return d.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  
+  // 日本時間に合わせた日付文字列を作成
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}/${m}/${day}`;
 };
 
 const formatChartDate = (dateStr: string) => {
-  const d = new Date(dateStr.replace(/\//g, '-'));
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  // YYYY/MM/DD -> M/D に変換
+  const parts = dateStr.split('/');
+  if (parts.length < 3) return dateStr;
+  return `${parseInt(parts[1])}/${parseInt(parts[2])}`;
 };
 
-// 新譜かどうかの判定（動画の公開日から30日以内か）
 const isNewRelease = (publishedAt: string) => {
   if (!publishedAt || publishedAt === "---") return false;
   const pubDate = new Date(publishedAt.replace(/\//g, '-'));
@@ -43,7 +48,7 @@ export default function Home() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // 全データを取得（古い順に並べて履歴を作る）
+        // 全データを取得（古い順）
         const { data: stats } = await supabase
           .from("youtube_stats")
           .select("*")
@@ -53,13 +58,15 @@ export default function Home() {
         setEvents(eventData || []);
 
         if (stats && stats.length > 0) {
-          // 修正ポイント: published_at ではなく created_at からユニークな日付（統計日）を抽出
-          const uniqueDates = Array.from(new Set(stats.map(s => formatDate(s.created_at)))).filter(d => d !== "---");
+          // ユニークな日付リストを作成
+          const uniqueDates = Array.from(new Set(stats.map(s => formatDate(s.created_at))))
+            .filter(d => d !== "---");
           setDates(uniqueDates);
 
           const songsMap: { [key: string]: any } = {};
+          
           stats.forEach(s => {
-            const dateStr = formatDate(s.created_at); // 統計を取得した日
+            const dateStr = formatDate(s.created_at);
             if (dateStr === "---") return;
             
             if (!songsMap[s.title]) {
@@ -67,11 +74,11 @@ export default function Home() {
                 artist: "UVERworld",
                 title: s.title,
                 videoId: s.video_id,
-                // 動画の公開日を表示用に整形
                 publishedAt: s.published_at ? s.published_at.replace(/-/g, '/') : "---",
                 history: {} 
               };
             }
+            // 同一日のデータが複数ある場合は最新（後のデータ）を保持
             songsMap[s.title].history[dateStr] = Number(s.views);
           });
 
@@ -89,8 +96,14 @@ export default function Home() {
             songsArray.forEach((s: any) => {
               const currentViews = s.history[date] || 0;
               const prevViews = prevDate ? s.history[prevDate] : null;
-              // 前日との差分（増加数）を計算
-              const inc = (prevViews !== null && currentViews >= prevViews) ? currentViews - prevViews : 0;
+              
+              // 差分計算: 前日データがある場合のみ計算
+              let inc = 0;
+              if (prevViews !== null) {
+                inc = currentViews - prevViews;
+                if (inc < 0) inc = 0; // 再生数が減ることはないので誤差を吸収
+              }
+              
               s.history[`${date}_inc`] = inc;
               
               if (chartIdx !== -1) {
@@ -99,7 +112,7 @@ export default function Home() {
               }
             });
 
-            // ランキング等の計算
+            // ランキング
             const viewsList = [...songsArray].sort((a, b) => (b.history[date] || 0) - (a.history[date] || 0));
             viewsList.forEach((s, rIdx) => { s.history[`${date}_v_rank`] = rIdx + 1; });
 
@@ -140,7 +153,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 md:p-12 font-sans text-[10px] relative">
-      
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
@@ -173,7 +185,7 @@ export default function Home() {
         <div className="mb-12 bg-zinc-900/40 p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex items-center gap-4">
-              <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics</h2>
+              <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics (2/2 - Today)</h2>
               <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
                 {(['top5', 'total', 'single'] as const).map((mode) => (
                   <button key={mode} onClick={() => setViewMode(mode)} className={`px-4 py-1.5 rounded-md text-[8px] font-black transition-all uppercase ${viewMode === mode ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
@@ -199,10 +211,7 @@ export default function Home() {
                 <Tooltip 
                   content={({ active, payload, label }) => {
                     if (!active || !payload) return null;
-                    const dayEvents = events.filter(e => {
-                      const d = new Date(e.event_date);
-                      return `${d.getMonth() + 1}/${d.getDate()}` === label;
-                    });
+                    const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === label);
                     return (
                       <div className="bg-black/90 border border-zinc-800 p-3 rounded-lg text-[10px] shadow-2xl backdrop-blur-md">
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
@@ -224,35 +233,23 @@ export default function Home() {
                     );
                   }}
                 />
-                
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '9px', paddingBottom: '25px' }} />
                 
                 <Line
-                  dataKey="totalGrowth" 
-                  stroke="none"
-                  name="Events"
-                  isAnimationActive={false}
+                  dataKey="totalGrowth" stroke="none" name="Events" isAnimationActive={false}
                   dot={(props) => {
                     const { cx, payload } = props;
                     if (!cx) return <React.Fragment key={Math.random()} />;
-                    
-                    const dayEvents = events.filter(e => {
-                      const d = new Date(e.event_date);
-                      return `${d.getMonth() + 1}/${d.getDate()}` === payload.name;
-                    });
-                    
+                    const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.name);
                     const dotBaseY = 360; 
                     return (
                       <g key={`ev-group-${payload.name}`} style={{ overflow: 'visible' }}>
                         {dayEvents.map((ev, index) => {
                           const currentY = dotBaseY + (index * 13);
-                          
                           let evColor = '#52525b';
                           if (ev.category === 'LIVE') evColor = '#ef4444';
                           if (ev.category === 'RELEASE') evColor = '#eab308';
                           if (ev.category === 'TV') evColor = '#10b981';
-                          if (ev.category === 'OTHER') evColor = '#3b82f6';
-
                           return (
                             <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
                               <circle cx={cx} cy={currentY} r={5} fill={evColor} opacity={0.3} className="animate-ping" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} />
