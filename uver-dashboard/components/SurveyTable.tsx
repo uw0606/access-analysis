@@ -46,8 +46,8 @@ export default function SurveyTable() {
   const [activeTab, setActiveTab] = useState('song');
   const [isDragActive, setIsDragActive] = useState(false);
   
-  // 【重要】ハイドレーション（描画タイミング）の不整合を防ぐフラグ
-  const [isMounted, setIsMounted] = useState(false);
+  // 【最重要】描画準備完了フラグ
+  const [isReady, setIsReady] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -62,8 +62,16 @@ export default function SurveyTable() {
 
   useEffect(() => { 
     fetchData(); 
-    setIsMounted(true); // マウント完了
   }, [fetchData]);
+
+  // タブ切り替えや読み込み完了時にわずかに遅延を入れてグラフを再描画させる
+  useEffect(() => {
+    setIsReady(false);
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 150); 
+    return () => clearTimeout(timer);
+  }, [activeTab, anaLiveKey, anaYear, anaType, loading]);
 
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
@@ -225,7 +233,82 @@ export default function SurveyTable() {
     return null;
   };
 
-  if (loading) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono">LOADING SYSTEM...</div>;
+  // グラフ描画関数
+  const renderChartContent = () => {
+    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800">READY...</div>;
+
+    if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
+      const data = activeTab === 'age' ? ageGroupData : chartData;
+      return (
+        <div style={{ width: '100%', height: 400 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie 
+                data={data} 
+                innerRadius={80} 
+                outerRadius={120} 
+                paddingAngle={5} 
+                dataKey="value" 
+                nameKey="name" 
+                stroke="none"
+                isAnimationActive={false}
+              >
+                {data.map((entry, i) => (
+                  <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+              <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '20px' }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    } else {
+      const dynamicHeight = activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : 400;
+      return (
+        <div style={{ width: '100%', height: dynamicHeight }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart 
+              data={chartData} 
+              layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
+              margin={{ left: 10, right: 30, top: 10, bottom: 10 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
+              {activeTab === 'prefecture' ? (
+                <>
+                  <XAxis type="number" hide />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    stroke="#a1a1aa" 
+                    fontSize={11} 
+                    width={90} 
+                    interval={0}
+                    tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
+                  />
+                </>
+              ) : (
+                <>
+                  <XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} />
+                  <YAxis stroke="#52525b" fontSize={9} />
+                </>
+              )}
+              <Bar 
+                dataKey="value" 
+                fill="#ef4444" 
+                radius={[0, 4, 4, 0]} 
+                barSize={activeTab === 'prefecture' ? 20 : 15}
+                isAnimationActive={false}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+  };
+
+  if (loading) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono text-xs">LOADING SYSTEM...</div>;
 
   return (
     <main className="min-h-screen w-full bg-black text-white p-4 md:p-12 font-sans text-[10px]">
@@ -233,7 +316,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">UVER <span className="text-red-600">Metric</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.2</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.3</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-5 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 hover:text-white transition-all flex items-center gap-2">Setlist Site ↗</a>
@@ -363,68 +446,8 @@ export default function SurveyTable() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className={`lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 ${activeTab === 'prefecture' ? 'h-auto min-h-[600px]' : 'h-[450px]'}`}>
-                  {/* 【重要】isMounted が true になるまで ResponsiveContainer をレンダリングしない */}
-                  {isMounted && (
-                    <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : "100%"}>
-                      {activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age' ? (
-                        <PieChart>
-                          <Pie 
-                            data={activeTab === 'age' ? ageGroupData : chartData} 
-                            innerRadius={100} 
-                            outerRadius={140} 
-                            paddingAngle={8} 
-                            dataKey="value" 
-                            nameKey="name" 
-                            stroke="none"
-                            isAnimationActive={false}
-                          >
-                            {(activeTab === 'age' ? ageGroupData : chartData).map((entry, i) => (
-                              <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
-                            ))}
-                          </Pie>
-                          <Tooltip content={<CustomTooltip />} />
-                          <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '30px' }} />
-                        </PieChart>
-                      ) : (
-                        <BarChart 
-                          data={chartData} 
-                          layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
-                          margin={{ left: 20, right: 30, top: 20, bottom: 20 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
-                          {activeTab === 'prefecture' ? (
-                            <>
-                              <XAxis type="number" hide />
-                              <YAxis 
-                                dataKey="name" 
-                                type="category" 
-                                stroke="#a1a1aa" 
-                                fontSize={10} 
-                                width={100} 
-                                interval={0}
-                                tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
-                                minTickGap={0}
-                              />
-                            </>
-                          ) : (
-                            <>
-                              <XAxis dataKey="name" stroke="#52525b" fontSize={8} />
-                              <YAxis stroke="#52525b" fontSize={8} />
-                            </>
-                          )}
-                          <Bar 
-                            dataKey="value" 
-                            fill="#ef4444" 
-                            radius={[0, 4, 4, 0]} 
-                            barSize={activeTab === 'prefecture' ? 18 : 15}
-                            isAnimationActive={false}
-                          />
-                          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
-                        </BarChart>
-                      )}
-                    </ResponsiveContainer>
-                  )}
+                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden">
+                   {renderChartContent()}
                 </div>
                 <div className={`bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto ${activeTab === 'prefecture' ? 'h-auto max-h-[1000px]' : 'max-h-[450px]'}`}>
                   <h4 className="text-zinc-500 text-[9px] font-black uppercase mb-8 border-l-2 border-red-600 pl-4">Summary</h4>
