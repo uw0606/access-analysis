@@ -13,7 +13,6 @@ const SNS_LINKS: { [key: string]: string } = {
   tiktok_takuya: "https://www.tiktok.com/@uver_takuya8" 
 };
 
-// 日付を YYYY/MM/DD に固定する関数
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
@@ -24,7 +23,6 @@ const formatDate = (dateStr: string) => {
   return `${y}/${m}/${day}`;
 };
 
-// グラフ表示用の M/D 形式
 const formatChartDate = (dateStr: string) => {
   const parts = dateStr.split('/');
   if (parts.length < 3) return dateStr;
@@ -61,22 +59,18 @@ export default function SnsStats() {
         });
 
         const latestDailyStats = Array.from(map.values());
-
         const processed = latestDailyStats.map((item) => {
           const platformHistory = latestDailyStats
             .filter(s => s.platform === item.platform)
             .sort((a, b) => a.fullDate.localeCompare(b.fullDate));
-          
           const currentIndex = platformHistory.findIndex(s => s.id === item.id);
           const prev = currentIndex > 0 ? platformHistory[currentIndex - 1] : null;
-          
           return {
             ...item,
             date: formatChartDate(item.fullDate),
             diff: prev ? item.follower_count - prev.follower_count : 0
           };
         });
-
         setData(processed);
       }
     } catch (err) {
@@ -115,7 +109,6 @@ export default function SnsStats() {
     const platformData = data
       .filter(d => d.platform === platform)
       .sort((a, b) => a.fullDate.localeCompare(b.fullDate));
-      
     const latest = platformData[platformData.length - 1];
 
     return (
@@ -137,49 +130,47 @@ export default function SnsStats() {
             <button onClick={() => handleQuickSave(platform)} className="bg-white text-black text-[9px] font-black px-4 py-2 rounded hover:bg-red-600 hover:text-white transition-all uppercase">{saveStatus[platform] || "Save"}</button>
           </div>
         </div>
-        <div className="h-[400px] w-full mb-6">
+
+        <div className="h-[450px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={platformData} margin={{ bottom: 30, top: 10 }}>
+            {/* margin bottom を増やしてスペースを確保 */}
+            <ComposedChart data={platformData} margin={{ bottom: 60, top: 10 }}>
               <CartesianGrid stroke="#18181b" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
               <YAxis yAxisId="left" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => v.toLocaleString()} />
               <YAxis yAxisId="right" orientation="right" hide={true} domain={[0, (max: number) => max * 4]} />
+              
               <Tooltip 
                 content={({ active, payload, label }) => {
                   if (!active || !payload) return null;
                   const item = platformData.find(d => d.date === label);
                   if (!item) return null;
-                  const currentFullDate = item.fullDate;
-                  const dayEvents = events.filter(e => formatDate(e.event_date) === currentFullDate);
+                  const dayEvents = events.filter(e => formatDate(e.event_date) === item.fullDate);
                   return (
                     <div className="bg-black/90 border border-zinc-800 p-3 rounded-lg text-[10px] shadow-2xl backdrop-blur-md">
                       <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
-                      {payload.map((p: any) => (
-                        p.name !== "Events" && (
-                          <div key={p.name} className="flex justify-between gap-6 py-0.5">
-                            <span style={{ color: p.color }} className="font-bold">{p.name}</span>
-                            <span className="font-mono text-zinc-300">{p.value?.toLocaleString()}</span>
-                          </div>
-                        )
+                      {payload.map((p: any) => p.name !== "Events" && (
+                        <div key={p.name} className="flex justify-between gap-6 py-0.5">
+                          <span style={{ color: p.color }} className="font-bold">{p.name}</span>
+                          <span className="font-mono text-zinc-300">{p.value?.toLocaleString()}</span>
+                        </div>
                       ))}
                       {dayEvents.length > 0 && (
                         <div className="mt-3 pt-2 border-t border-red-900/50">
                           <p className="text-red-500 font-black italic uppercase text-[7px] mb-1">★ {dayEvents.length} EVENTS</p>
-                          {dayEvents.map((ev, i) => (
-                            <p key={i} className="text-white font-bold leading-tight mb-1">・{ev.title}</p>
-                          ))}
+                          {dayEvents.map((ev, i) => <p key={i} className="text-white font-bold leading-tight mb-1">・{ev.title}</p>)}
                         </div>
                       )}
                     </div>
                   );
                 }}
               />
-              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '25px' }} />
               
+              <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '25px' }} />
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
 
-              {/* 【修正箇所】イベント用ドットの追加 */}
+              {/* 【修正】イベントドットを日付(X軸)の下に配置 */}
               <Line
                 yAxisId="left"
                 dataKey="follower_count"
@@ -190,11 +181,12 @@ export default function SnsStats() {
                   const { cx, payload } = props;
                   if (!cx) return <React.Fragment key={Math.random()} />;
                   const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.date);
-                  const dotBaseY = 340; 
+                  // 座標を調整: グラフの底辺(日付ラベル)よりもさらに下に描画
+                  const dotBaseY = 380; 
                   return (
                     <g key={`ev-group-${payload.date}-${title}`} style={{ overflow: 'visible' }}>
                       {dayEvents.map((ev, index) => {
-                        const currentY = dotBaseY + (index * 13);
+                        const currentY = dotBaseY + (index * 12);
                         let evColor = '#ef4444';
                         if (ev.category === 'RELEASE') evColor = '#eab308';
                         if (ev.category === 'TV') evColor = '#10b981';
@@ -212,7 +204,7 @@ export default function SnsStats() {
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        {/* ...（以下、履歴テーブル部分は変更なし） */}
+
         <div className="rounded-lg border border-zinc-800 bg-black/40 overflow-hidden">
           <div className="max-h-[200px] overflow-y-auto">
             <table className="w-full text-[10px] font-mono border-separate border-spacing-0">
@@ -249,7 +241,6 @@ export default function SnsStats() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 md:p-12 relative">
-      {/* イベント詳細モーダル */}
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
