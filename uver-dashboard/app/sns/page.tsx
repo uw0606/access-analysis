@@ -13,6 +13,17 @@ const SNS_LINKS: { [key: string]: string } = {
   tiktok_takuya: "https://www.tiktok.com/@uver_takuya8" 
 };
 
+// 【追加】イベントカテゴリに応じた色を返す関数 (カレンダーと統一)
+const getEventColor = (category: string) => {
+  switch (category) {
+    case 'LIVE': return '#dc2626';    // bg-red-600
+    case 'RELEASE': return '#eab308'; // bg-yellow-500
+    case 'TV': return '#10b981';      // bg-emerald-500
+    case 'OTHER': return '#2563eb';   // bg-blue-600
+    default: return '#52525b';        // bg-zinc-600
+  }
+};
+
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
@@ -133,7 +144,6 @@ export default function SnsStats() {
 
         <div className="h-[400px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
-            {/* margin bottom をさらに増やして(50)広大なスペースを確保 */}
             <ComposedChart data={platformData} margin={{ bottom: 50, top: 10 }}>
               <CartesianGrid stroke="#18181b" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
@@ -156,9 +166,15 @@ export default function SnsStats() {
                         </div>
                       ))}
                       {dayEvents.length > 0 && (
-                        <div className="mt-3 pt-2 border-t border-red-900/50">
-                          <p className="text-red-500 font-black italic uppercase text-[7px] mb-1">★ {dayEvents.length} EVENTS</p>
-                          {dayEvents.map((ev, i) => <p key={i} className="text-white font-bold leading-tight mb-1">・{ev.title}</p>)}
+                        <div className="mt-3 pt-2 border-t border-zinc-800">
+                          <p className="text-zinc-500 font-black italic uppercase text-[7px] mb-2 tracking-widest">★ EVENTS</p>
+                          {dayEvents.map((ev, i) => (
+                            <div key={i} className="flex items-center gap-2 mb-1.5">
+                              {/* ツールチップ内のイベントドットも色分け */}
+                              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getEventColor(ev.category) }} />
+                              <p className="text-white font-bold leading-tight">{ev.title}</p>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -170,7 +186,6 @@ export default function SnsStats() {
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
 
-              {/* 【修正】イベントドットをさらに下（360）に配置 */}
               <Line
                 yAxisId="left"
                 dataKey="follower_count"
@@ -182,15 +197,13 @@ export default function SnsStats() {
                   if (!cx) return <React.Fragment key={Math.random()} />;
                   const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.date);
                   
-                  // ここを 360 に下げました
                   const dotBaseY = 360; 
                   return (
                     <g key={`ev-group-${payload.date}-${title}`} style={{ overflow: 'visible' }}>
                       {dayEvents.map((ev, index) => {
                         const currentY = dotBaseY + (index * 13);
-                        let evColor = '#ef4444';
-                        if (ev.category === 'RELEASE') evColor = '#eab308';
-                        if (ev.category === 'TV') evColor = '#10b981';
+                        {/* 【修正】カテゴリ色を取得して適用 */}
+                        const evColor = getEventColor(ev.category);
                         return (
                           <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
                             <circle cx={cx} cy={currentY} r={5} fill={evColor} opacity={0.2} className="animate-pulse" />
@@ -245,9 +258,10 @@ export default function SnsStats() {
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl text-[11px]">
+          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-sm rounded-3xl p-8 shadow-2xl text-[11px]">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
-            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 ${selectedEvent.category === 'LIVE' ? 'bg-red-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
+            {/* 【修正】モーダル内のバッジ色もカテゴリに合わせる */}
+            <div className="inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white" style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
               {selectedEvent.category}
             </div>
             <p className="text-zinc-500 font-mono mb-1">{selectedEvent.event_date}</p>

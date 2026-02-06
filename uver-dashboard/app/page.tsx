@@ -17,13 +17,22 @@ type ChartPoint = {
   [key: string]: any; 
 };
 
+// 【追加】イベントカテゴリに応じた色を返す関数
+const getEventColor = (category: string) => {
+  switch (category) {
+    case 'LIVE': return '#dc2626';    // bg-red-600
+    case 'RELEASE': return '#eab308'; // bg-yellow-500
+    case 'TV': return '#10b981';      // bg-emerald-500
+    case 'OTHER': return '#2563eb';   // bg-blue-600
+    default: return '#52525b';        // bg-zinc-600
+  }
+};
+
 // 日付フォーマットを JST(日本時間)基準で YYYY/MM/DD に固定
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "---";
-  
-  // 日本時間に変換するためのオフセット調整（UTC+9）
   const jstDate = new Date(d.getTime() + (9 * 60 * 60 * 1000));
   const y = jstDate.getUTCFullYear();
   const m = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
@@ -84,7 +93,6 @@ export default function Home() {
         stats.forEach(s => {
           const dateStr = formatDate(s.created_at);
           if (dateStr === "---") return;
-          
           if (!songsMap[s.title]) {
             songsMap[s.title] = {
               artist: "UVERworld",
@@ -112,15 +120,12 @@ export default function Home() {
           songsArray.forEach((s: any) => {
             const currentViews = s.history[date] || 0;
             const prevViews = prevDate ? s.history[prevDate] : null;
-            
             let inc = 0;
             if (prevViews !== null && currentViews > 0) {
               inc = currentViews - prevViews;
               if (inc < 0) inc = 0; 
             }
-            
             s.history[`${date}_inc`] = inc;
-            
             if (chartIdx !== -1) {
               tempChartData[chartIdx][s.title] = inc;
               tempChartData[chartIdx].totalGrowth += inc;
@@ -178,7 +183,8 @@ export default function Home() {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
           <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
-            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 ${selectedEvent.category === 'LIVE' ? 'bg-red-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
+            {/* 【修正】モーダル内のバッジ色もカテゴリに合わせる */}
+            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white`} style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
               {selectedEvent.category}
             </div>
             <p className="text-zinc-500 font-mono text-[9px] mb-1">{selectedEvent.event_date}</p>
@@ -196,7 +202,6 @@ export default function Home() {
             <h1 className="text-3xl font-black italic uppercase tracking-tighter">Video <span className="text-red-600">Analytics</span></h1>
             <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
           </div>
-          {/* 【修正】リンクナビゲーション: パスを修正しリフレッシュを削除 */}
           <div className="flex flex-wrap justify-center gap-3">
             <a href="/calendar" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
             <a href="/sns" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">SNSアクセス解析</a>
@@ -244,10 +249,13 @@ export default function Home() {
                           </div>
                         ))}
                         {dayEvents.length > 0 && (
-                          <div className="mt-3 pt-2 border-t border-red-900/50">
-                            <p className="text-red-500 font-black italic uppercase text-[7px] mb-1">★ {dayEvents.length} EVENTS</p>
+                          <div className="mt-3 pt-2 border-t border-zinc-800">
+                            <p className="text-zinc-500 font-black italic uppercase text-[7px] mb-2 tracking-widest">★ EVENTS</p>
                             {dayEvents.map((ev, i) => (
-                              <p key={i} className="text-white font-bold leading-tight mb-1">・{ev.title}</p>
+                              <div key={i} className="flex items-center gap-2 mb-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getEventColor(ev.category) }} />
+                                <p className="text-white font-bold leading-tight">{ev.title}</p>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -268,9 +276,8 @@ export default function Home() {
                       <g key={`ev-group-${payload.name}`} style={{ overflow: 'visible' }}>
                         {dayEvents.map((ev, index) => {
                           const currentY = dotBaseY + (index * 13);
-                          let evColor = '#ef4444';
-                          if (ev.category === 'RELEASE') evColor = '#eab308';
-                          if (ev.category === 'TV') evColor = '#10b981';
+                          {/* 【修正】カテゴリに応じた色を適用 */}
+                          const evColor = getEventColor(ev.category);
                           return (
                             <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
                               <circle cx={cx} cy={currentY} r={5} fill={evColor} opacity={0.3} className="animate-ping" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} />
@@ -293,6 +300,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* テーブル部分は変更なし */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[9px]">
             <thead>
