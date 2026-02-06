@@ -1,0 +1,413 @@
+"use client";
+
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { supabase } from "@/app/supabase"; 
+import * as XLSX from 'xlsx';
+import { 
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
+  BarChart, Bar, XAxis, YAxis, Legend, CartesianGrid 
+} from 'recharts';
+
+const COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', 
+  '#06b6d4', '#f43f5e', '#84cc16', '#a855f7', '#64748b',
+  '#fb7185', '#38bdf8', '#fbbf24', '#a78bfa', '#4ade80'
+];
+
+const GENDER_COLORS: { [key: string]: string } = {
+  "女性": "#ef4444",
+  "男性": "#3b82f6",
+  "回答しない": "#52525b",
+  "未回答": "#27272a"
+};
+
+const VENUE_TYPES = ["LIVE HOUSE", "HALL", "ARENA", "FES", "OTHER"];
+
+const ANALYSIS_TARGETS = [
+  { id: 'song', label: 'Songs', title: '聴きたい曲名', key: 'request_song' },
+  { id: 'visits', label: 'Attendance', title: '来場予定回数', key: 'visits' },
+  { id: 'prefecture', label: 'Region', title: '来場地域', key: 'prefecture' },
+  { id: 'age', label: 'Age', title: '年齢', key: 'age' },
+  { id: 'gender', label: 'Gender', title: '男女比', key: 'gender' },
+  { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
+];
+
+export default function SurveyTable() {
+  const [view, setView] = useState<'analytics' | 'import'>('analytics');
+  const [tableData, setTableData] = useState<any[]>([]);
+  const [liveEvents, setLiveEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [anaYear, setAnaYear] = useState("All");
+  const [anaType, setAnaType] = useState("All");
+  const [anaLiveKey, setAnaLiveKey] = useState("All");
+  const [selectedLiveForImport, setSelectedLiveForImport] = useState<any>(null);
+  const [selectedTypeForImport, setSelectedTypeForImport] = useState("");
+  const [activeTab, setActiveTab] = useState('song');
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false });
+      setLiveEvents(events || []);
+      const { data: responses, error } = await supabase.from("survey_responses").select("*").order('created_at', { ascending: false });
+      if (error) console.error("Fetch Error:", error);
+      setTableData(responses || []);
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const registeredSet = useMemo(() => {
+    return new Set(tableData.map(d => {
+      const datePart = d.created_at ? d.created_at.split('T')[0] : "";
+      return `${datePart}_${d.live_name}`;
+    }));
+  }, [tableData]);
+
+  // 【修正】3. Registered Live (Date) の選択肢を 1と2の選択状況で絞り込む
+  const registeredLiveOptions = useMemo(() => {
+    const map = new Map();
+    tableData.forEach(d => {
+      // フィルタ条件との照合
+      const matchY = anaYear === "All" || String(d.event_year) === anaYear;
+      const matchT = anaType === "All" || d.venue_type === anaType;
+
+      if (matchY && matchT) {
+        const datePart = d.created_at ? d.created_at.split('T')[0] : "Unknown";
+        const key = `${datePart}_${d.live_name}`;
+        if (!map.has(key)) {
+          map.set(key, { key, date: datePart, name: d.live_name });
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [tableData, anaYear, anaType]);
+
+  const processFile = async (file: File) => {
+    if (!selectedLiveForImport || !selectedTypeForImport) {
+      alert("会場タイプを先に選択してください");
+      return;
+    }
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = evt.target?.result;
+        if (!data) return;
+        const workbook = XLSX.read(data, { type: 'binary', codepage: 932 });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+        if (!rows || rows.length < 2) throw new Error("データが含まれていません。");
+
+        const targetDate = selectedLiveForImport.event_date; 
+        const currentEventYear = targetDate.split('-')[0];
+        
+        const formattedData = rows.slice(1).map((row) => {
+          if (!row[0] && !row[1]) return null;
+          return {
+            request_song: String(row[0] || "").trim(),
+            visits:       String(row[1] || "").trim(),
+            prefecture:   String(row[2] || "").trim(),
+            age:          String(row[3] || "").trim(),
+            gender:       String(row[4] || "").trim(),
+            live_name:    selectedLiveForImport.title,
+            venue_type:   selectedTypeForImport,
+            event_year:   currentEventYear,
+            created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
+          };
+        }).filter(Boolean);
+
+        await supabase.from("survey_responses")
+          .delete()
+          .eq("live_name", selectedLiveForImport.title)
+          .gte("created_at", `${targetDate}T00:00:00.000Z`)
+          .lte("created_at", `${targetDate}T23:59:59.999Z`);
+
+        const { error } = await supabase.from("survey_responses").insert(formattedData);
+        if (error) throw error;
+        
+        alert(`完了しました！\n${targetDate} のデータを ${formattedData.length} 件登録しました。`);
+        await fetchData();
+        setView('analytics');
+      } catch (err: any) { alert("エラー: " + err.message); } finally { setUploading(false); }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const filteredData = useMemo(() => {
+    return tableData.filter(d => {
+      const datePart = d.created_at ? d.created_at.split('T')[0] : "";
+      const currentKey = `${datePart}_${d.live_name}`;
+      const matchY = anaYear === "All" || String(d.event_year) === anaYear;
+      const matchT = anaType === "All" || d.venue_type === anaType;
+      const matchL = anaLiveKey === "All" || currentKey === anaLiveKey;
+      return matchY && matchT && matchL;
+    });
+  }, [tableData, anaYear, anaType, anaLiveKey]);
+
+  const ageGroupData = useMemo(() => {
+    if (activeTab !== 'age') return [];
+    const groupOrder = ["10代", "20代", "30代", "40代", "50代", "60代以上"];
+    const groups: { [key: string]: number } = { "10代": 0, "20代": 0, "30代": 0, "40代": 0, "50代": 0, "60代以上": 0 };
+    filteredData.forEach(item => {
+      const rawAge = String(item.age || "").trim();
+      const numMatch = rawAge.match(/\d+/);
+      if (numMatch) {
+        const val = parseInt(numMatch[0]);
+        if (val >= 10 && val < 20) groups["10代"]++;
+        else if (val >= 20 && val < 30) groups["20代"]++;
+        else if (val >= 30 && val < 40) groups["30代"]++;
+        else if (val >= 40 && val < 50) groups["40代"]++;
+        else if (val >= 50 && val < 60) groups["50代"]++;
+        else if (val >= 60 || val > 1900) groups["60代以上"]++;
+      }
+    });
+    return groupOrder.map(name => ({ name, value: groups[name] })).filter(item => item.value > 0);
+  }, [filteredData, activeTab]);
+
+  const chartData = useMemo(() => {
+    const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
+    const key = target?.key;
+    if (!key || filteredData.length === 0) return [];
+    const counts: { [key: string]: number } = {};
+    filteredData.forEach(item => {
+      let rawVal = item[key] ? String(item[key]).trim() : "未回答";
+      if (activeTab === 'song' && rawVal !== "未回答") {
+        const protectedVal = rawVal.replace(/99\/100騙しの哲/g, "##99_100_TETSU##");
+        const splitSongs = protectedVal.split(/[/,、&／＆]+/);
+        splitSongs.forEach(song => {
+          let currentSong = song.replace(/##99_100_TETSU##/g, "99/100騙しの哲").replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!');
+          let cleanSong = currentSong.trim();
+          if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
+          if (cleanSong === "GO ON") cleanSong = "GO-ON";
+          if (cleanSong) counts[cleanSong] = (counts[cleanSong] || 0) + 1;
+        });
+      } else if (activeTab === 'visits' && rawVal !== "未回答") {
+        let processedVal = rawVal.replace(/一/g, '1').replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+        const numMatch = processedVal.match(/\d+/);
+        if (numMatch) {
+          const num = parseInt(numMatch[0]);
+          if (num > 0) { const formatted = `${num}回`; counts[formatted] = (counts[formatted] || 0) + 1; }
+        }
+      } else if (rawVal !== "回" && rawVal !== "未回答" && rawVal !== "") {
+        counts[rawVal] = (counts[rawVal] || 0) + 1;
+      }
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => activeTab === 'visits' ? (parseInt(a.name) || 0) - (parseInt(b.name) || 0) : b.value - a.value);
+  }, [filteredData, activeTab]);
+
+  const totalValue = useMemo(() => (activeTab === 'age' ? ageGroupData : chartData).reduce((acc, curr) => acc + curr.value, 0), [chartData, ageGroupData, activeTab]);
+
+  const getItemColor = (name: string, index: number) => {
+    if (activeTab === 'gender' && GENDER_COLORS[name]) return GENDER_COLORS[name];
+    if (activeTab === 'prefecture') return '#ef4444';
+    return COLORS[index % COLORS.length];
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-2xl">
+          <p className="text-white font-black text-[11px] mb-1">{data.name}</p>
+          <p className="text-red-500 font-mono text-[10px]">COUNT: {data.value}</p>
+          <p className="text-zinc-400 font-mono text-[10px]">RATIO: {((data.value / totalValue) * 100).toFixed(1)}%</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  if (loading) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono">LOADING SYSTEM...</div>;
+
+  return (
+    <main className="min-h-screen w-full bg-black text-white p-4 md:p-12 font-sans text-[10px]">
+      <div className="max-w-7xl mx-auto">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+          <div>
+            <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">UVER <span className="text-red-600">Metric</span></h1>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.2</p>
+          </div>
+          <div className="flex gap-2">
+            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-5 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 hover:text-white transition-all flex items-center gap-2">Setlist Site ↗</a>
+            <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
+              {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
+            </button>
+          </div>
+        </header>
+
+        <div className="flex gap-2 mb-10 overflow-x-auto pb-2 border-t border-zinc-900 pt-4">
+          <a href="https://access-analysis-ifwd3ciuw-uw0606s-projects.vercel.app/calendar" target="_blank" rel="noopener noreferrer" 
+             className="px-4 py-2 bg-zinc-950 border border-red-900/30 rounded-lg text-[8px] font-mono text-red-500 hover:bg-red-600 hover:text-white transition-all whitespace-nowrap uppercase">
+             カレンダー
+          </a>
+          <a href="https://access-analysis-ifwd3ciuw-uw0606s-projects.vercel.app/" target="_blank" rel="noopener noreferrer" 
+             className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-[8px] font-mono text-zinc-500 hover:text-white transition-all whitespace-nowrap uppercase">
+             YouTube動画アクセス解析
+          </a>
+          <a href="https://access-analysis-ifwd3ciuw-uw0606s-projects.vercel.app/sns" target="_blank" rel="noopener noreferrer" 
+             className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-[8px] font-mono text-zinc-500 hover:text-white transition-all whitespace-nowrap uppercase">
+             SNSアクセス解析
+          </a>
+        </div>
+
+        {view === 'import' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-500">
+             <div className="bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
+              <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
+              <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                {liveEvents.map(ev => {
+                  const isAlreadyRegistered = registeredSet.has(`${ev.event_date}_${ev.title}`);
+                  return (
+                    <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
+                      className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
+                      <div className="flex justify-between items-center text-[8px] font-mono text-zinc-500">
+                        <span>{ev.event_date}</span>
+                        {isAlreadyRegistered && <span className="text-red-500 uppercase font-black">Registered</span>}
+                      </div>
+                      <div className="font-bold text-[11px] mt-1">{ev.title}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="space-y-6">
+              {selectedLiveForImport ? (
+                <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-red-600/30 space-y-8 animate-in slide-in-from-right duration-500">
+                  <h3 className="text-2xl font-black italic text-red-600 leading-none">{selectedLiveForImport.title}</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {VENUE_TYPES.map(type => (
+                      <button key={type} onClick={() => setSelectedTypeForImport(type)} className={`py-3 rounded-xl font-black text-[9px] uppercase border transition-all ${selectedTypeForImport === type ? 'bg-white text-black border-white' : 'bg-zinc-950 text-zinc-500 border-zinc-800 hover:border-zinc-400'}`}>{type}</button>
+                    ))}
+                  </div>
+                  {selectedTypeForImport && (
+                    <div className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl transition-all flex flex-col items-center justify-center gap-4 ${isDragActive ? 'border-red-600 bg-red-600/10 scale-[1.02]' : 'border-zinc-700 bg-zinc-950/50'}`}
+                      onDragOver={(e) => { e.preventDefault(); setIsDragActive(true); }}
+                      onDragLeave={() => setIsDragActive(false)}
+                      onDrop={(e) => { e.preventDefault(); setIsDragActive(false); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); }}>
+                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : "Drop file here"}</p>
+                      <label className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">Browse Files<input type="file" className="hidden" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} /></label>
+                    </div>
+                  )}
+                </div>
+              ) : <div className="h-full flex items-center justify-center border-2 border-dashed border-zinc-900 rounded-[40px] text-zinc-800 font-black tracking-widest uppercase">Select an event</div>}
+            </div>
+          </div>
+        ) : (
+          <div className="animate-in fade-in duration-700">
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
+                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono">
+                  <option value="All">All Years</option>
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
+                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono">
+                  <option value="All">All Types</option>{VENUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live (Date)</span>
+                <select value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono outline-none focus:border-red-600 text-white">
+                  <option value="All">All Matches</option>
+                  {registeredLiveOptions.map(opt => (
+                    <option key={opt.key} value={opt.key}>{opt.date} | {opt.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <nav className="flex gap-2 mb-10 overflow-x-auto pb-4">
+              {ANALYSIS_TARGETS.map((target) => (
+                <button key={target.id} onClick={() => setActiveTab(target.id)} className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${activeTab === target.id ? 'bg-red-600 border-red-600 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'border-zinc-800 text-zinc-500 hover:border-zinc-400'}`}>{target.label}</button>
+              ))}
+            </nav>
+
+            {filteredData.length === 0 ? (
+              <div className="h-64 flex flex-col items-center justify-center bg-zinc-950 rounded-[40px] border border-zinc-900 text-zinc-700 font-black tracking-widest uppercase">NO DATA FOUND</div>
+            ) : activeTab === 'song' ? (
+              <div className="bg-zinc-950 p-8 rounded-[40px] border border-zinc-800">
+                <h4 className="text-zinc-500 text-[10px] font-black uppercase border-l-2 border-red-600 pl-4 mb-8">Song Ranking</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-4">
+                  {chartData.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center border-b border-zinc-900 pb-2 group">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <span className="text-[9px] font-mono text-zinc-600 w-6">{(i+1).toString().padStart(2, '0')}</span>
+                        <span className="text-white font-bold truncate group-hover:text-red-500 transition-colors">{item.name}</span>
+                      </div>
+                      <span className="text-red-600 font-mono text-lg font-black">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : activeTab === 'list' ? (
+              <div className="overflow-x-auto bg-zinc-950 rounded-3xl border border-zinc-800">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-zinc-900/50 text-zinc-500 uppercase text-[7px] font-bold tracking-widest border-b border-zinc-800">
+                    <tr><th className="p-4">Date</th><th className="p-4">Live</th><th className="p-4">Song</th><th className="p-4">Visits</th><th className="p-4">Region</th><th className="p-4">Age</th><th className="p-4">Gender</th></tr>
+                  </thead>
+                  <tbody className="text-[9px]">
+                    {filteredData.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-white/5 border-b border-zinc-900">
+                        <td className="p-4 text-zinc-600 font-mono">{row.created_at?.split('T')[0]}</td>
+                        <td className="p-4 text-zinc-500">{row.live_name}</td>
+                        <td className="p-4 text-white font-bold">{row.request_song}</td>
+                        <td className="p-4 text-zinc-400">{row.visits}</td>
+                        <td className="p-4 text-zinc-400">{row.prefecture}</td>
+                        <td className="p-4 text-zinc-400">{row.age}</td>
+                        <td className="p-4 text-zinc-400">{row.gender}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className={`lg:col-span-2 bg-zinc-950 p-8 rounded-[40px] border border-zinc-800 ${activeTab === 'prefecture' ? 'h-auto min-h-[500px]' : 'h-[450px]'}`}>
+                  <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? chartData.length * 30 + 100 : "100%"}>
+                    {activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age' ? (
+                      <PieChart>
+                        <Pie data={activeTab === 'age' ? ageGroupData : chartData} innerRadius={100} outerRadius={140} paddingAngle={8} dataKey="value" nameKey="name" stroke="none">
+                          {(activeTab === 'age' ? ageGroupData : chartData).map((entry, i) => (
+                            <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '30px' }} />
+                      </PieChart>
+                    ) : (
+                      <BarChart data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
+                        {activeTab === 'prefecture' ? <><XAxis type="number" hide /><YAxis dataKey="name" type="category" stroke="#52525b" fontSize={9} width={80} interval={0} /></> : <><XAxis dataKey="name" stroke="#52525b" fontSize={8} /><YAxis stroke="#52525b" fontSize={8} /></>}
+                        <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={15} />
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                </div>
+                <div className={`bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto ${activeTab === 'prefecture' ? 'h-auto max-h-[1000px]' : 'max-h-[450px]'}`}>
+                  <h4 className="text-zinc-500 text-[9px] font-black uppercase mb-8 border-l-2 border-red-600 pl-4">Summary</h4>
+                  <div className="space-y-4">
+                    {(activeTab === 'age' ? ageGroupData : chartData).map((item, i) => (
+                      <div key={i} className="flex justify-between items-center border-b border-zinc-800/50 pb-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getItemColor(item.name, i) }}></div>
+                          <span className="text-zinc-300 font-bold">{item.name}</span>
+                        </div>
+                        <div className="text-red-500 font-mono text-xl font-black">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
