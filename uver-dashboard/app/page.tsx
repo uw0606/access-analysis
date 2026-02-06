@@ -14,7 +14,8 @@ type ChartPoint = {
   name: string;
   fullDate: string;
   totalGrowth: number;
-  events: any[]; // 複数のイベントを保持できるよう配列に変更
+  events: any[]; 
+  eventPos: number; // Scatter表示用のダミー位置
   [key: string]: any; 
 };
 
@@ -114,14 +115,13 @@ export default function Home() {
         });
 
         const tempChartData: ChartPoint[] = uniqueDates.map(date => {
-          // 同じ日のイベントをすべて抽出
           const dayEvents = evs.filter(e => e.event_date.replace(/-/g, '/') === date);
           return {
             name: formatChartDate(date),
             fullDate: date,
             totalGrowth: 0,
             events: dayEvents,
-            eventPos: 0 // Scatter表示用のダミー位置（実際はshape内で計算）
+            eventPos: 0 
           };
         });
 
@@ -143,15 +143,6 @@ export default function Home() {
               tempChartData[chartIdx][s.title] = inc;
               tempChartData[chartIdx].totalGrowth += inc;
             }
-          });
-          const growthList = [...songsArray].sort((a, b) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
-          growthList.forEach((s, rIdx) => {
-            s.history[`${date}_g_rank`] = rIdx + 1;
-            const prevGRank = prevDate ? s.history[`${prevDate}_g_rank`] : null;
-            if (!prevGRank) s.history[`${date}_diff`] = "new";
-            else if (rIdx + 1 < prevGRank) s.history[`${date}_diff`] = "up";
-            else if (rIdx + 1 > prevGRank) s.history[`${date}_diff`] = "down";
-            else s.history[`${date}_diff`] = "keep";
           });
         });
 
@@ -194,15 +185,15 @@ export default function Home() {
             </div>
             <p className="text-zinc-500 font-mono text-[9px] mb-1">{selectedEvent.event_date}</p>
             <h2 className="text-xl font-black italic uppercase leading-tight mb-4 tracking-tighter">{selectedEvent.title}</h2>
-            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800">
-              <p className="text-zinc-400 text-[11px] leading-relaxed whitespace-pre-wrap">{selectedEvent.description || "詳細情報はありません。"}</p>
+            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 text-[11px] leading-relaxed whitespace-pre-wrap">
+              {selectedEvent.description || "詳細情報はありません。"}
             </div>
           </div>
         </div>
       )}
 
-      <div className="max-w-[100vw] mx-auto">
-        <header className="mb-8 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 border-b border-zinc-800 pb-6">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-8 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-zinc-800 pb-6">
           <div>
             <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Video <span className="text-red-600">Analytics</span></h1>
             <p className="text-zinc-500 text-[8px] md:text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
@@ -246,14 +237,11 @@ export default function Home() {
                     return (
                       <div className="bg-black/90 border border-zinc-800 p-2 rounded-lg text-[9px] shadow-2xl backdrop-blur-md">
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
-                        {dayEvents.length > 0 && (
-                          <div className="mb-2 p-1.5 bg-zinc-800/50 rounded border-l-2 border-red-600">
-                            <p className="text-red-500 font-black uppercase text-[7px] mb-1">Events</p>
-                            {dayEvents.map((ev: any, i: number) => (
-                              <p key={i} className="text-white font-bold leading-tight mb-1">・{ev.title}</p>
-                            ))}
+                        {dayEvents.map((ev: any, i: number) => (
+                          <div key={i} className="mb-2 p-1.5 bg-zinc-800/50 rounded border-l-2" style={{ borderColor: getEventColor(ev.category) }}>
+                            <p className="text-white font-bold leading-tight">・{ev.title}</p>
                           </div>
-                        )}
+                        ))}
                         {payload.filter(p => p.name !== "Events").map((p: any) => (
                           <div key={p.name} className="flex justify-between gap-4">
                             <span style={{ color: p.color }} className="font-bold">{p.name}</span>
@@ -266,43 +254,30 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px', paddingBottom: '20px' }} />
                 
-                {/* イベント散布図：X軸付近に固定しつつ、重なりを回避し、アニメーションを追加 */}
+                {/* SNSページと同様のアニメーション付きドット。dot={false}を設定したLineと干渉しない */}
                 <Scatter 
                   name="Events" 
                   dataKey="eventPos" 
                   shape={(props: any) => {
                     const { cx, cy, payload } = props;
-                    if (!payload.events || payload.events.length === 0) return <rect />;
+                    if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
                     
-                    // グラフの底辺（X軸の少し上）の基準位置
                     const baseBottomY = 320; 
 
                     return (
                       <g>
                         {payload.events.map((ev: any, idx: number) => {
-                          // 同じ日のイベントが重ならないように垂直方向にオフセット
                           const offsetHeight = idx * 15;
                           const targetY = baseBottomY + offsetHeight;
                           const color = getEventColor(ev.category);
                           
                           return (
                             <g key={idx} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
-                              {/* 垂直ガイド線（一番上のドットからのみ伸ばす） */}
-                              {idx === 0 && (
-                                <line x1={cx} y1={cy} x2={cx} y2={targetY} stroke={color} strokeWidth={0.5} strokeDasharray="3 3" opacity={0.3} />
-                              )}
-                              {/* アニメーションと半径をSNS解析ページと合わせる */}
                               <circle cx={cx} cy={targetY} r={6} fill={color} opacity={0.15} className="animate-pulse" />
                               <circle cx={cx} cy={targetY} r={3} fill={color} stroke="#fff" strokeWidth={0.5} />
-                              <text x={cx} y={targetY + 3} textAnchor="middle" fill="#fff" fontSize="6px" fontWeight="black" pointerEvents="none">
+                              <text x={cx} y={targetY + 2} textAnchor="middle" fill="#fff" fontSize="5px" fontWeight="black" pointerEvents="none">
                                 {ev.category.slice(0,1)}
                               </text>
-                              {/* モバイルでなければカテゴリ名を添える */}
-                              {!isMobile && idx === 0 && (
-                                <text x={cx + 10} y={targetY + 3} fill={color} fontSize="6px" fontWeight="bold">
-                                  {ev.category}
-                                </text>
-                              )}
                             </g>
                           );
                         })}
@@ -311,6 +286,7 @@ export default function Home() {
                   }} 
                 />
 
+                {/* dot={false} でライン上のドットを非表示にし、イベントドットと重ならないように修正 */}
                 {viewMode === "top5" && tableData.slice(0, 5).map((song, idx) => (
                   <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} />
                 ))}
