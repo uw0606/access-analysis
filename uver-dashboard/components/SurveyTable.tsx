@@ -45,6 +45,9 @@ export default function SurveyTable() {
   const [selectedTypeForImport, setSelectedTypeForImport] = useState("");
   const [activeTab, setActiveTab] = useState('song');
   const [isDragActive, setIsDragActive] = useState(false);
+  
+  // 【重要】ハイドレーション（描画タイミング）の不整合を防ぐフラグ
+  const [isMounted, setIsMounted] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -57,7 +60,10 @@ export default function SurveyTable() {
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { 
+    fetchData(); 
+    setIsMounted(true); // マウント完了
+  }, [fetchData]);
 
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
@@ -244,7 +250,7 @@ export default function SurveyTable() {
         </div>
 
         {view === 'import' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
              <div className="bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
@@ -265,7 +271,7 @@ export default function SurveyTable() {
             </div>
             <div className="space-y-6">
               {selectedLiveForImport ? (
-                <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-red-600/30 space-y-8 animate-in slide-in-from-right duration-500">
+                <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-red-600/30 space-y-8">
                   <h3 className="text-2xl font-black italic text-red-600 leading-none">{selectedLiveForImport.title}</h3>
                   <div className="grid grid-cols-2 gap-2">
                     {VENUE_TYPES.map(type => (
@@ -286,7 +292,7 @@ export default function SurveyTable() {
             </div>
           </div>
         ) : (
-          <div className="animate-in fade-in duration-700">
+          <div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
                 <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono">
@@ -358,64 +364,67 @@ export default function SurveyTable() {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className={`lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 ${activeTab === 'prefecture' ? 'h-auto min-h-[600px]' : 'h-[450px]'}`}>
-                  <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : "100%"}>
-                    {activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age' ? (
-                      <PieChart>
-                        <Pie 
-                          data={activeTab === 'age' ? ageGroupData : chartData} 
-                          innerRadius={100} 
-                          outerRadius={140} 
-                          paddingAngle={8} 
-                          dataKey="value" 
-                          nameKey="name" 
-                          stroke="none"
-                          isAnimationActive={false}
+                  {/* 【重要】isMounted が true になるまで ResponsiveContainer をレンダリングしない */}
+                  {isMounted && (
+                    <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : "100%"}>
+                      {activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age' ? (
+                        <PieChart>
+                          <Pie 
+                            data={activeTab === 'age' ? ageGroupData : chartData} 
+                            innerRadius={100} 
+                            outerRadius={140} 
+                            paddingAngle={8} 
+                            dataKey="value" 
+                            nameKey="name" 
+                            stroke="none"
+                            isAnimationActive={false}
+                          >
+                            {(activeTab === 'age' ? ageGroupData : chartData).map((entry, i) => (
+                              <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
+                            ))}
+                          </Pie>
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '30px' }} />
+                        </PieChart>
+                      ) : (
+                        <BarChart 
+                          data={chartData} 
+                          layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
+                          margin={{ left: 20, right: 30, top: 20, bottom: 20 }}
                         >
-                          {(activeTab === 'age' ? ageGroupData : chartData).map((entry, i) => (
-                            <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '30px' }} />
-                      </PieChart>
-                    ) : (
-                      <BarChart 
-                        data={chartData} 
-                        layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
-                        margin={{ left: activeTab === 'prefecture' ? 40 : 0, right: 30, top: 20, bottom: 20 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
-                        {activeTab === 'prefecture' ? (
-                          <>
-                            <XAxis type="number" hide />
-                            <YAxis 
-                              dataKey="name" 
-                              type="category" 
-                              stroke="#a1a1aa" 
-                              fontSize={10} 
-                              width={100} 
-                              interval={0}
-                              tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
-                              minTickGap={0}
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <XAxis dataKey="name" stroke="#52525b" fontSize={8} />
-                            <YAxis stroke="#52525b" fontSize={8} />
-                          </>
-                        )}
-                        <Bar 
-                          dataKey="value" 
-                          fill="#ef4444" 
-                          radius={[0, 4, 4, 0]} 
-                          barSize={activeTab === 'prefecture' ? 18 : 15}
-                          isAnimationActive={false}
-                        />
-                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
-                      </BarChart>
-                    )}
-                  </ResponsiveContainer>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
+                          {activeTab === 'prefecture' ? (
+                            <>
+                              <XAxis type="number" hide />
+                              <YAxis 
+                                dataKey="name" 
+                                type="category" 
+                                stroke="#a1a1aa" 
+                                fontSize={10} 
+                                width={100} 
+                                interval={0}
+                                tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
+                                minTickGap={0}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <XAxis dataKey="name" stroke="#52525b" fontSize={8} />
+                              <YAxis stroke="#52525b" fontSize={8} />
+                            </>
+                          )}
+                          <Bar 
+                            dataKey="value" 
+                            fill="#ef4444" 
+                            radius={[0, 4, 4, 0]} 
+                            barSize={activeTab === 'prefecture' ? 18 : 15}
+                            isAnimationActive={false}
+                          />
+                          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+                        </BarChart>
+                      )}
+                    </ResponsiveContainer>
+                  )}
                 </div>
                 <div className={`bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto ${activeTab === 'prefecture' ? 'h-auto max-h-[1000px]' : 'max-h-[450px]'}`}>
                   <h4 className="text-zinc-500 text-[9px] font-black uppercase mb-8 border-l-2 border-red-600 pl-4">Summary</h4>
