@@ -63,6 +63,15 @@ export default function Home() {
   const [viewMode, setViewMode] = useState<"top5" | "total" | "single">("top5");
   const [selectedSong, setSelectedSong] = useState<string>("");
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 画面サイズ監視
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const fetchData = async () => {
     setLoading(true);
@@ -219,11 +228,6 @@ export default function Home() {
                 ))}
               </div>
             </div>
-            {viewMode === "single" && (
-              <select className="bg-zinc-950 text-zinc-300 border border-zinc-800 rounded-lg px-3 py-1.5 text-[9px] outline-none" value={selectedSong} onChange={(e) => setSelectedSong(e.target.value)}>
-                {tableData.map(s => <option key={s.title} value={s.title}>{s.title}</option>)}
-              </select>
-            )}
           </div>
 
           <div className="h-[320px] md:h-[420px] w-full mb-6">
@@ -259,19 +263,18 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブルセクション: スマホ極限最適化 */}
+        {/* テーブルセクション: ズレ修正済み */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
               <tr className="bg-zinc-950 text-zinc-500 uppercase font-bold">
-                {/* 固定列: アーティスト名 (スマホ幅 40px) */}
                 <th className="p-2 sticky left-0 bg-zinc-950 z-40 border-b border-r border-zinc-800 w-[40px]">Artist</th>
-                {/* 固定列: 曲名 (スマホ幅 85px) */}
                 <th className="p-2 sticky left-[40px] bg-zinc-950 z-40 border-b border-r border-zinc-800 w-[85px] md:w-[200px]">Song</th>
-                {/* 公開日: スマホでは非表示 */}
                 <th className="p-2 border-b border-r border-zinc-800 text-center hidden md:table-cell">Released</th>
                 {dates.map(date => (
-                  <th key={date} colSpan={4} className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono text-[7px] md:text-[9px]">
+                  <th key={date} 
+                      colSpan={isMobile ? 3 : 4} 
+                      className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono text-[7px] md:text-[9px]">
                     {date.split('/').slice(1).join('/')}
                   </th>
                 ))}
@@ -295,11 +298,17 @@ export default function Home() {
                     <td className="p-2 border-r border-zinc-800 text-zinc-600 font-mono text-center hidden md:table-cell italic">{song.publishedAt}</td>
                     {dates.map(date => (
                       <React.Fragment key={`${song.title}-${date}`}>
+                        {/* 1: 累計 */}
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
+                        {/* 2: 増分 */}
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
                           {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
                         </td>
-                        <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden sm:table-cell">{song.history[`${date}_v_rank`] || "-"}</td>
+                        {/* 3: 順位 (スマホでは非表示) */}
+                        <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">
+                          {song.history[`${date}_v_rank`] || "-"}
+                        </td>
+                        {/* 4: 成長推移 */}
                         <td className="p-1.5 border-r border-zinc-800 text-center font-black text-white">
                           <div className="flex items-center justify-center gap-0.5">
                             <RankIcon status={song.history[`${date}_diff`]} />
