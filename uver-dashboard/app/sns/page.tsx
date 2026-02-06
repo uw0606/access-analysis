@@ -42,34 +42,27 @@ export default function SnsStats() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      // キャッシュを避けるため、クエリにランダムな要素を含めるか、明示的に取得
-      // 1. 全てのSNS統計を取得（最新順で取得して、後で反転させる）
       const { data: stats, error } = await supabase
         .from("sns_stats")
         .select("*")
         .order('created_at', { ascending: true });
 
-      // 2. カレンダーイベントを取得
       const { data: eventData } = await supabase.from("calendar_events").select("*");
       setEvents(eventData || []);
 
       if (error) {
         console.error("Supabase Error:", error.message);
       } else if (stats) {
-        // 同一プラットフォーム・同一日付のデータが複数ある場合、最新のものだけを残す
         const map = new Map();
         stats.forEach(item => {
           const dateKey = formatDate(item.created_at);
           const compositeKey = `${item.platform}_${dateKey}`;
-          // 常に新しいID（＝後から追加されたもの）で上書き
           map.set(compositeKey, { ...item, fullDate: dateKey });
         });
 
         const latestDailyStats = Array.from(map.values());
 
-        // 差分計算用のロジック
         const processed = latestDailyStats.map((item) => {
-          // 同じプラットフォームの全履歴を日付順に並べる
           const platformHistory = latestDailyStats
             .filter(s => s.platform === item.platform)
             .sort((a, b) => a.fullDate.localeCompare(b.fullDate));
@@ -119,7 +112,6 @@ export default function SnsStats() {
   };
 
   const renderSnsSection = (title: string, platform: string, color: string) => {
-    // 日付順に並び替え
     const platformData = data
       .filter(d => d.platform === platform)
       .sort((a, b) => a.fullDate.localeCompare(b.fullDate));
@@ -129,7 +121,6 @@ export default function SnsStats() {
     return (
       <div className="mb-12 bg-zinc-900/50 p-6 rounded-2xl border border-zinc-800 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: color }}></div>
-
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-6">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-1">
@@ -141,13 +132,11 @@ export default function SnsStats() {
               <span className="text-[10px] text-zinc-500 ml-2 uppercase font-normal tracking-widest">Total</span>
             </div>
           </div>
-
           <div className="flex items-center gap-2 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
             <input type="number" placeholder="Manual Update" className="bg-transparent border-none text-[11px] font-mono focus:outline-none w-28 px-3 py-1 text-white" value={inputValues[platform] || ""} onChange={(e) => setInputValues({ ...inputValues, [platform]: e.target.value })} />
             <button onClick={() => handleQuickSave(platform)} className="bg-white text-black text-[9px] font-black px-4 py-2 rounded hover:bg-red-600 hover:text-white transition-all uppercase">{saveStatus[platform] || "Save"}</button>
           </div>
         </div>
-
         <div className="h-[400px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={platformData} margin={{ bottom: 0, top: 10 }}>
@@ -155,7 +144,6 @@ export default function SnsStats() {
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
               <YAxis yAxisId="left" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => v.toLocaleString()} />
               <YAxis yAxisId="right" orientation="right" hide={true} domain={[0, (max: number) => max * 4]} />
-              
               <Tooltip 
                 content={({ active, payload, label }) => {
                   if (!active || !payload) return null;
@@ -163,7 +151,6 @@ export default function SnsStats() {
                   if (!item) return null;
                   const currentFullDate = item.fullDate;
                   const dayEvents = events.filter(e => formatDate(e.event_date) === currentFullDate);
-                  
                   return (
                     <div className="bg-black/90 border border-zinc-800 p-3 rounded-lg text-[10px] shadow-2xl backdrop-blur-md">
                       <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
@@ -187,16 +174,12 @@ export default function SnsStats() {
                   );
                 }}
               />
-              
               <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '25px' }} />
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
-              
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-
-        {/* 履歴テーブル */}
         <div className="rounded-lg border border-zinc-800 bg-black/40 overflow-hidden">
           <div className="max-h-[200px] overflow-y-auto">
             <table className="w-full text-[10px] font-mono border-separate border-spacing-0">
@@ -238,9 +221,11 @@ export default function SnsStats() {
           <h1 className="text-3xl font-black italic uppercase tracking-tighter">SNS <span className="text-red-600">Analytics</span></h1>
           <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Follower Growth & Social Impact</p>
         </div>
-        <div className="flex gap-4">
-          <button onClick={fetchData} className="text-[10px] border border-zinc-700 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest">↻ Refresh Data</button>
-          <a href="/" className="text-[10px] border border-zinc-700 px-6 py-2 rounded-full hover:bg-white hover:text-black transition-all font-bold uppercase tracking-widest">← Video Analytics</a>
+        {/* 【修正】ボタンナビゲーションの順序とリンク先 */}
+        <div className="flex flex-wrap justify-center gap-3">
+          <a href="/calendar" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
+          <a href="/" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">YouTube動画アクセス解析</a>
+          <a href="/analysis" className="text-[10px] bg-white text-black px-6 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">ライブアンケート解析 →</a>
         </div>
       </header>
       
