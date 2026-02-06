@@ -1,5 +1,6 @@
 "use client";
 
+// クライアントコンポーネントで動的レンダリングを強制する設定
 export const dynamic = "force-dynamic";
 
 import React, { useEffect, useState } from "react";
@@ -8,15 +9,17 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
 } from 'recharts';
 
+// チャートデータの型定義
 type ChartPoint = {
   name: string;
   fullDate: string;
   totalGrowth: number;
   event?: any;
-  eventPos: number; // イベントを表示するY軸の固定位置
+  eventPos: number; // イベント表示用の固定Y軸位置
   [key: string]: any; 
 };
 
+// イベントカテゴリに応じた色を返す関数
 const getEventColor = (category: string) => {
   switch (category) {
     case 'LIVE': return '#dc2626';
@@ -100,14 +103,16 @@ export default function Home() {
           const dateStr = formatDate(s.created_at);
           if (dateStr === "---") return;
           if (!songsMap[s.title]) {
-            songsMap[s.title] = { artist: "UVERworld", title: s.title, videoId: s.video_id,
-              publishedAt: s.published_at ? s.published_at.replace(/-/g, '/') : "---", history: {} 
+            songsMap[s.title] = {
+              artist: "UVERworld",
+              title: s.title,
+              videoId: s.video_id,
+              publishedAt: s.published_at ? s.published_at.replace(/-/g, '/') : "---",
+              history: {} 
             };
           }
           songsMap[s.title].history[dateStr] = Number(s.views);
         });
-
-        const songsArray = Object.values(songsMap);
 
         const tempChartData: ChartPoint[] = uniqueDates.map(date => {
           const dayEvent = evs.find(e => e.event_date.replace(/-/g, '/') === date);
@@ -116,10 +121,11 @@ export default function Home() {
             fullDate: date,
             totalGrowth: 0,
             event: dayEvent || null,
-            eventPos: 0 // Y軸の0の位置（グラフの下端）に固定
+            eventPos: 0 // Y軸の最小値付近に固定
           };
         });
 
+        const songsArray = Object.values(songsMap);
         uniqueDates.forEach((date, idx) => {
           const prevDate = uniqueDates[idx - 1];
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
@@ -138,10 +144,15 @@ export default function Home() {
               tempChartData[chartIdx].totalGrowth += inc;
             }
           });
-          
-          // ランキング等の計算（維持）
           const growthList = [...songsArray].sort((a, b) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
-          growthList.forEach((s, rIdx) => { s.history[`${date}_g_rank`] = rIdx + 1; });
+          growthList.forEach((s, rIdx) => {
+            s.history[`${date}_g_rank`] = rIdx + 1;
+            const prevGRank = prevDate ? s.history[`${prevDate}_g_rank`] : null;
+            if (!prevGRank) s.history[`${date}_diff`] = "new";
+            else if (rIdx + 1 < prevGRank) s.history[`${date}_diff`] = "up";
+            else if (rIdx + 1 > prevGRank) s.history[`${date}_diff`] = "down";
+            else s.history[`${date}_diff`] = "keep";
+          });
         });
 
         const lastDate = uniqueDates[uniqueDates.length - 1];
@@ -153,7 +164,11 @@ export default function Home() {
         setChartData(tempChartData);
         if (sortedResult.length > 0) setSelectedSong(sortedResult[0].title);
       }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error("Fetch error:", err); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -165,7 +180,7 @@ export default function Home() {
     return <span className="text-zinc-400 mr-0.5 text-[6px]">new</span>;
   };
 
-  if (loading) return <div className="bg-black text-white min-h-screen flex items-center justify-center font-mono animate-pulse text-xs">Connecting Data Matrix...</div>;
+  if (loading) return <div className="bg-black text-white min-h-screen flex items-center justify-center font-mono animate-pulse text-xs uppercase">Connecting Data Matrix...</div>;
 
   return (
     <main className="min-h-screen bg-black text-white p-2 md:p-12 font-sans text-[10px] relative">
@@ -211,16 +226,16 @@ export default function Home() {
                 ))}
               </div>
               {viewMode === "single" && (
-                <select value={selectedSong} onChange={(e) => setSelectedSong(e.target.value)} className="bg-zinc-950 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-black outline-none focus:ring-1 focus:ring-red-600 transition-all uppercase cursor-pointer">
+                <select value={selectedSong} onChange={(e) => setSelectedSong(e.target.value)} className="bg-zinc-950 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-black outline-none focus:ring-1 focus:ring-red-600 transition-all cursor-pointer">
                   {tableData.map(song => <option key={song.title} value={song.title}>{song.title}</option>)}
                 </select>
               )}
             </div>
           </div>
 
-          <div className="h-[320px] md:h-[460px] w-full mb-6">
+          <div className="h-[350px] md:h-[480px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ bottom: 40, top: 10 }}> {/* 下マージンを広げてイベントエリアを確保 */}
+              <ComposedChart data={chartData} margin={{ bottom: 50, top: 10 }}> 
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
@@ -233,7 +248,7 @@ export default function Home() {
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
                         {dayEvent && (
                           <div className="mb-2 p-1.5 bg-zinc-800 rounded border-l-2 border-red-600">
-                            <p className="text-red-500 font-black uppercase text-[7px] mb-0.5">Event Occurred</p>
+                            <p className="text-red-500 font-black uppercase text-[7px] mb-0.5">Event Info</p>
                             <p className="text-white font-bold leading-tight">{dayEvent.title}</p>
                           </div>
                         )}
@@ -249,20 +264,23 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px' }} />
                 
-                {/* イベントを日付（X軸）のすぐ下に並べるScatter */}
+                {/* イベントをX軸ラベルのすぐ下に並べるScatter */}
                 <Scatter 
                   name="Events" 
                   dataKey="eventPos" 
                   shape={(props: any) => {
-                    const { cx, payload } = props;
+                    const { cx, cy, payload } = props;
                     if (!payload.event) return <rect />;
-                    // cy を調整してX軸より下（グラフエリアの外側付近）に描画
-                    const eventYPos = 385; // コンテナの高さに応じて微調整
+                    // グラフ領域の最下部付近に配置
+                    const targetY = cy + 25; 
                     return (
                       <g onClick={() => setSelectedEvent(payload.event)} style={{ cursor: 'pointer' }}>
-                        <rect x={cx - 1} y={eventYPos - 15} width={2} height={15} fill={getEventColor(payload.event.category)} opacity={0.3} />
-                        <circle cx={cx} cy={eventYPos} r={isMobile ? 4 : 5} fill={getEventColor(payload.event.category)} stroke="#fff" strokeWidth={1} />
-                        <text x={cx} y={eventYPos + 12} textAnchor="middle" fill={getEventColor(payload.event.category)} fontSize="6px" fontWeight="bold">
+                        {/* 軸からのインジケーター線 */}
+                        <line x1={cx} y1={cy} x2={cx} y2={targetY} stroke={getEventColor(payload.event.category)} strokeWidth={1} strokeDasharray="2 2" opacity={0.5} />
+                        {/* イベントドット */}
+                        <circle cx={cx} cy={targetY} r={isMobile ? 4 : 5} fill={getEventColor(payload.event.category)} stroke="#fff" strokeWidth={1} />
+                        {/* カテゴリ略称ラベル */}
+                        <text x={cx} y={targetY + 12} textAnchor="middle" fill={getEventColor(payload.event.category)} fontSize="6px" fontWeight="black">
                           {payload.event.category.slice(0,3)}
                         </text>
                       </g>
@@ -280,7 +298,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブルセクション (省略なし) */}
+        {/* テーブルセクション */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
@@ -289,7 +307,7 @@ export default function Home() {
                 <th className="p-2 sticky left-[40px] bg-zinc-950 z-40 border-b border-r border-zinc-800 w-[85px] md:w-[200px]">Song</th>
                 <th className="p-2 border-b border-r border-zinc-800 text-center hidden md:table-cell">Released</th>
                 {dates.map(date => (
-                  <th key={date} colSpan={isMobile ? 3 : 4} className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono text-[7px] md:text-[9px]">
+                  <th key={date} colSpan={isMobile ? 3 : 4} className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono">
                     {date.split('/').slice(1).join('/')}
                   </th>
                 ))}
@@ -300,7 +318,7 @@ export default function Home() {
                 const isNew = isNewRelease(song.publishedAt);
                 return (
                   <tr key={song.title} className={`border-b border-zinc-800/40 hover:bg-white/5 transition-colors group ${isNew ? 'bg-red-900/10' : ''}`}>
-                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate text-[6px] md:text-[9px]">
+                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate">
                       {song.artist.slice(0,4)}
                     </td>
                     <td className="p-2 sticky left-[40px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[85px] md:w-[200px]">
