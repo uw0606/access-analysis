@@ -46,9 +46,9 @@ export default function SurveyTable() {
   const [activeTab, setActiveTab] = useState('song');
   const [isDragActive, setIsDragActive] = useState(false);
   
-  // マウントと画面幅の管理
+  // iPhone対策：マウント状態と動的な幅の管理
   const [isReady, setIsReady] = useState(false);
-  const [chartWidth, setChartWidth] = useState(300);
+  const [chartWidth, setChartWidth] = useState(320);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -65,22 +65,24 @@ export default function SurveyTable() {
     fetchData(); 
   }, [fetchData]);
 
-  // 画面幅の計算とマウント待機
+  // iPhone Safariのレンダリング遅延対策
   useEffect(() => {
     const updateSize = () => {
-      // 親要素のパディング分を考慮して幅を計算
       const width = window.innerWidth;
+      // 画面端の余白（左右各16px〜32px）を引いた値をセット
       if (width < 768) {
-        setChartWidth(width - 64); // スマホ用
+        setChartWidth(width - 48); 
       } else {
-        setChartWidth(Math.min(width * 0.6, 800)); // PC用
+        setChartWidth(Math.min(width * 0.55, 700));
       }
     };
     
     updateSize();
     window.addEventListener('resize', updateSize);
     
-    const timer = setTimeout(() => setIsReady(true), 200);
+    // DOMが安定するまで少し待ってから表示
+    const timer = setTimeout(() => setIsReady(true), 300);
+    
     return () => {
       window.removeEventListener('resize', updateSize);
       clearTimeout(timer);
@@ -99,13 +101,10 @@ export default function SurveyTable() {
     tableData.forEach(d => {
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
-
       if (matchY && matchT) {
         const datePart = d.created_at ? d.created_at.split('T')[0] : "Unknown";
         const key = `${datePart}_${d.live_name}`;
-        if (!map.has(key)) {
-          map.set(key, { key, date: datePart, name: d.live_name });
-        }
+        if (!map.has(key)) map.set(key, { key, date: datePart, name: d.live_name });
       }
     });
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
@@ -127,10 +126,8 @@ export default function SurveyTable() {
         const worksheet = workbook.Sheets[sheetName];
         const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
         if (!rows || rows.length < 2) throw new Error("データが含まれていません。");
-
         const targetDate = selectedLiveForImport.event_date; 
         const currentEventYear = targetDate.split('-')[0];
-        
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
           return {
@@ -145,16 +142,9 @@ export default function SurveyTable() {
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
-
-        await supabase.from("survey_responses")
-          .delete()
-          .eq("live_name", selectedLiveForImport.title)
-          .gte("created_at", `${targetDate}T00:00:00.000Z`)
-          .lte("created_at", `${targetDate}T23:59:59.999Z`);
-
+        await supabase.from("survey_responses").delete().eq("live_name", selectedLiveForImport.title).gte("created_at", `${targetDate}T00:00:00.000Z`).lte("created_at", `${targetDate}T23:59:59.999Z`);
         const { error } = await supabase.from("survey_responses").insert(formattedData);
         if (error) throw error;
-        
         alert(`完了しました！\n${targetDate} のデータを ${formattedData.length} 件登録しました。`);
         await fetchData();
         setView('analytics');
@@ -247,31 +237,21 @@ export default function SurveyTable() {
     return null;
   };
 
-  // グラフ描画関数（ResponsiveContainerを排除）
   const renderChartContent = () => {
-    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-tighter">Initializing Chart...</div>;
+    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-widest">Connect...</div>;
 
     if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
       const data = activeTab === 'age' ? ageGroupData : chartData;
       return (
         <div className="flex justify-center items-center w-full min-h-[400px]">
-          <PieChart width={chartWidth} height={400}>
-            <Pie 
-              data={data} 
-              innerRadius={80} 
-              outerRadius={120} 
-              paddingAngle={5} 
-              dataKey="value" 
-              nameKey="name" 
-              stroke="none"
-              isAnimationActive={false}
-            >
+          <PieChart width={chartWidth} height={380} key={`pie-${chartWidth}`}>
+            <Pie data={data} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" nameKey="name" stroke="none" isAnimationActive={false}>
               {data.map((entry, i) => (
                 <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
-            <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '20px' }} />
+            <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', paddingTop: '20px' }} />
           </PieChart>
         </div>
       );
@@ -279,26 +259,12 @@ export default function SurveyTable() {
       const dynamicHeight = activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : 400;
       return (
         <div className="flex justify-center w-full" style={{ minHeight: dynamicHeight }}>
-          <BarChart 
-            width={chartWidth} 
-            height={dynamicHeight} 
-            data={chartData} 
-            layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
-            margin={{ left: 5, right: 30, top: 10, bottom: 10 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
+          <BarChart key={`bar-${activeTab}-${chartWidth}`} width={chartWidth} height={dynamicHeight} data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'} margin={{ left: 5, right: 30, top: 10, bottom: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
             {activeTab === 'prefecture' ? (
               <>
                 <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  stroke="#a1a1aa" 
-                  fontSize={11} 
-                  width={90} 
-                  interval={0}
-                  tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
-                />
+                <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={10} width={80} interval={0} tick={{ fill: '#a1a1aa' }} />
               </>
             ) : (
               <>
@@ -306,13 +272,7 @@ export default function SurveyTable() {
                 <YAxis stroke="#52525b" fontSize={9} />
               </>
             )}
-            <Bar 
-              dataKey="value" 
-              fill="#ef4444" 
-              radius={[0, 4, 4, 0]} 
-              barSize={activeTab === 'prefecture' ? 20 : 15}
-              isAnimationActive={false}
-            />
+            <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={activeTab === 'prefecture' ? 20 : 15} isAnimationActive={false} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
           </BarChart>
         </div>
@@ -328,10 +288,9 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">UVER <span className="text-red-600">Metric</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.4</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
-            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-5 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 hover:text-white transition-all flex items-center gap-2">Setlist Site ↗</a>
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
               {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
             </button>
@@ -340,8 +299,7 @@ export default function SurveyTable() {
 
         <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
           <a href="/calendar" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">カレンダー</a>
-          <a href="/" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">YouTube動画アクセス解析</a>
-          <a href="/sns" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">SNSアクセス解析</a>
+          <a href="/" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">YouTube動画解析</a>
         </div>
 
         {view === 'import' ? (
@@ -365,7 +323,7 @@ export default function SurveyTable() {
               </div>
             </div>
             <div className="space-y-6">
-              {selectedLiveForImport ? (
+              {selectedLiveForImport && (
                 <div className="bg-zinc-900/50 p-8 rounded-[40px] border border-red-600/30 space-y-8">
                   <h3 className="text-2xl font-black italic text-red-600 leading-none">{selectedLiveForImport.title}</h3>
                   <div className="grid grid-cols-2 gap-2">
@@ -374,23 +332,21 @@ export default function SurveyTable() {
                     ))}
                   </div>
                   {selectedTypeForImport && (
-                    <div className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl transition-all flex flex-col items-center justify-center gap-4 ${isDragActive ? 'border-red-600 bg-red-600/10 scale-[1.02]' : 'border-zinc-700 bg-zinc-950/50'}`}
-                      onDragOver={(e) => { e.preventDefault(); setIsDragActive(true); }}
-                      onDragLeave={() => setIsDragActive(false)}
-                      onDrop={(e) => { e.preventDefault(); setIsDragActive(false); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); }}>
-                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : "Drop file here"}</p>
-                      <label className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">Browse Files<input type="file" className="hidden" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} /></label>
+                    <div className="relative pt-12 pb-12 border-2 border-dashed border-zinc-700 bg-zinc-950/50 rounded-3xl flex flex-col items-center justify-center gap-4">
+                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : "Browse File"}</p>
+                      <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
+                      <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
                     </div>
                   )}
                 </div>
-              ) : <div className="h-full flex items-center justify-center border-2 border-dashed border-zinc-900 rounded-[40px] text-zinc-800 font-black tracking-widest uppercase">Select an event</div>}
+              )}
             </div>
           </div>
         ) : (
           <div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
-                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono">
+                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
                   <option value="2024">2024</option>
                   <option value="2025">2025</option>
@@ -398,37 +354,34 @@ export default function SurveyTable() {
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
-                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono">
+                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Types</option>{VENUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live (Date)</span>
-                <select value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono outline-none focus:border-red-600 text-white">
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live</span>
+                <select value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
                   <option value="All">All Matches</option>
-                  {registeredLiveOptions.map(opt => (
-                    <option key={opt.key} value={opt.key}>{opt.date} | {opt.name}</option>
-                  ))}
+                  {registeredLiveOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.date} | {opt.name}</option>)}
                 </select>
               </div>
             </div>
 
-            <nav className="flex gap-2 mb-10 overflow-x-auto pb-4">
+            <nav className="flex gap-2 mb-10 overflow-x-auto pb-4 no-scrollbar">
               {ANALYSIS_TARGETS.map((target) => (
-                <button key={target.id} onClick={() => setActiveTab(target.id)} className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${activeTab === target.id ? 'bg-red-600 border-red-600 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'border-zinc-800 text-zinc-500 hover:border-zinc-400'}`}>{target.label}</button>
+                <button key={target.id} onClick={() => setActiveTab(target.id)} className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${activeTab === target.id ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-800 text-zinc-500 hover:border-zinc-400'}`}>{target.label}</button>
               ))}
             </nav>
 
             {filteredData.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center bg-zinc-950 rounded-[40px] border border-zinc-900 text-zinc-700 font-black tracking-widest uppercase">NO DATA FOUND</div>
+              <div className="h-64 flex flex-col items-center justify-center bg-zinc-950 rounded-[40px] border border-zinc-900 text-zinc-700 font-black tracking-widest uppercase">NO DATA</div>
             ) : activeTab === 'song' ? (
               <div className="bg-zinc-950 p-8 rounded-[40px] border border-zinc-800">
-                <h4 className="text-zinc-500 text-[10px] font-black uppercase border-l-2 border-red-600 pl-4 mb-8">Song Ranking</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-4">
                   {chartData.map((item, i) => (
-                    <div key={i} className="flex justify-between items-center border-b border-zinc-900 pb-2 group">
+                    <div key={i} className="flex justify-between items-center border-b border-zinc-900 pb-2">
                       <div className="flex items-center gap-3 overflow-hidden">
                         <span className="text-[9px] font-mono text-zinc-600 w-6">{(i+1).toString().padStart(2, '0')}</span>
-                        <span className="text-white font-bold truncate group-hover:text-red-500 transition-colors">{item.name}</span>
+                        <span className="text-white font-bold truncate">{item.name}</span>
                       </div>
                       <span className="text-red-600 font-mono text-lg font-black">{item.value}</span>
                     </div>
@@ -437,13 +390,13 @@ export default function SurveyTable() {
               </div>
             ) : activeTab === 'list' ? (
               <div className="overflow-x-auto bg-zinc-950 rounded-3xl border border-zinc-800">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-zinc-900/50 text-zinc-500 uppercase text-[7px] font-bold tracking-widest border-b border-zinc-800">
+                <table className="w-full text-left border-collapse min-w-[600px]">
+                  <thead className="bg-zinc-900 text-zinc-500 uppercase text-[7px] font-bold tracking-widest border-b border-zinc-800">
                     <tr><th className="p-4">Date</th><th className="p-4">Live</th><th className="p-4">Song</th><th className="p-4">Visits</th><th className="p-4">Region</th><th className="p-4">Age</th><th className="p-4">Gender</th></tr>
                   </thead>
                   <tbody className="text-[9px]">
                     {filteredData.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-white/5 border-b border-zinc-900">
+                      <tr key={idx} className="border-b border-zinc-900">
                         <td className="p-4 text-zinc-600 font-mono">{row.created_at?.split('T')[0]}</td>
                         <td className="p-4 text-zinc-500">{row.live_name}</td>
                         <td className="p-4 text-white font-bold">{row.request_song}</td>
@@ -458,7 +411,7 @@ export default function SurveyTable() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden flex justify-center">
+                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden flex justify-center items-center">
                    {renderChartContent()}
                 </div>
                 <div className={`bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto ${activeTab === 'prefecture' ? 'h-auto max-h-[1000px]' : 'max-h-[450px]'}`}>

@@ -212,7 +212,7 @@ export default function Home() {
           <div className="flex flex-wrap justify-center gap-2">
             <a href="/calendar" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
             <a href="/sns" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">SNS解析</a>
-            <a href="/analysis" className="text-[8px] md:text-[9px] bg-white text-black px-4 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">解析 →</a>
+            <a href="/analysis" className="text-[8px] md:text-[9px] bg-white text-black px-4 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">アンケート解析 →</a>
           </div>
         </header>
 
