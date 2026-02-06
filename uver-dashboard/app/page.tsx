@@ -14,8 +14,7 @@ type ChartPoint = {
   name: string;
   fullDate: string;
   totalGrowth: number;
-  event?: any;
-  eventPos: number; // イベント表示用の固定Y軸位置
+  events: any[]; // 複数のイベントを保持できるよう配列に変更
   [key: string]: any; 
 };
 
@@ -115,13 +114,14 @@ export default function Home() {
         });
 
         const tempChartData: ChartPoint[] = uniqueDates.map(date => {
-          const dayEvent = evs.find(e => e.event_date.replace(/-/g, '/') === date);
+          // 同じ日のイベントをすべて抽出
+          const dayEvents = evs.filter(e => e.event_date.replace(/-/g, '/') === date);
           return {
             name: formatChartDate(date),
             fullDate: date,
             totalGrowth: 0,
-            event: dayEvent || null,
-            eventPos: 0 // Y軸の最小値付近に固定
+            events: dayEvents,
+            eventPos: 0 // Scatter表示用のダミー位置（実際はshape内で計算）
           };
         });
 
@@ -233,23 +233,25 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="h-[350px] md:h-[480px] w-full mb-6">
+          <div className="h-[400px] md:h-[500px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ bottom: 50, top: 10 }}> 
+              <ComposedChart data={chartData} margin={{ bottom: 60, top: 10 }}> 
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                 <Tooltip 
                   content={({ active, payload, label }) => {
                     if (!active || !payload) return null;
-                    const dayEvent = payload[0]?.payload?.event;
+                    const dayEvents = payload[0]?.payload?.events || [];
                     return (
                       <div className="bg-black/90 border border-zinc-800 p-2 rounded-lg text-[9px] shadow-2xl backdrop-blur-md">
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
-                        {dayEvent && (
-                          <div className="mb-2 p-1.5 bg-zinc-800 rounded border-l-2 border-red-600">
-                            <p className="text-red-500 font-black uppercase text-[7px] mb-0.5">Event Info</p>
-                            <p className="text-white font-bold leading-tight">{dayEvent.title}</p>
+                        {dayEvents.length > 0 && (
+                          <div className="mb-2 p-1.5 bg-zinc-800/50 rounded border-l-2 border-red-600">
+                            <p className="text-red-500 font-black uppercase text-[7px] mb-1">Events</p>
+                            {dayEvents.map((ev: any, i: number) => (
+                              <p key={i} className="text-white font-bold leading-tight mb-1">・{ev.title}</p>
+                            ))}
                           </div>
                         )}
                         {payload.filter(p => p.name !== "Events").map((p: any) => (
@@ -262,27 +264,46 @@ export default function Home() {
                     );
                   }}
                 />
-                <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px' }} />
+                <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px', paddingBottom: '20px' }} />
                 
-                {/* イベントをX軸ラベルのすぐ下に並べるScatter */}
+                {/* イベント散布図：X軸付近に固定しつつ、重なりを回避 */}
                 <Scatter 
                   name="Events" 
                   dataKey="eventPos" 
                   shape={(props: any) => {
                     const { cx, cy, payload } = props;
-                    if (!payload.event) return <rect />;
-                    // グラフ領域の最下部付近に配置
-                    const targetY = cy + 25; 
+                    if (!payload.events || payload.events.length === 0) return <rect />;
+                    
+                    // グラフの底辺（X軸の少し上）の基準位置
+                    const baseBottomY = 320; 
+
                     return (
-                      <g onClick={() => setSelectedEvent(payload.event)} style={{ cursor: 'pointer' }}>
-                        {/* 軸からのインジケーター線 */}
-                        <line x1={cx} y1={cy} x2={cx} y2={targetY} stroke={getEventColor(payload.event.category)} strokeWidth={1} strokeDasharray="2 2" opacity={0.5} />
-                        {/* イベントドット */}
-                        <circle cx={cx} cy={targetY} r={isMobile ? 4 : 5} fill={getEventColor(payload.event.category)} stroke="#fff" strokeWidth={1} />
-                        {/* カテゴリ略称ラベル */}
-                        <text x={cx} y={targetY + 12} textAnchor="middle" fill={getEventColor(payload.event.category)} fontSize="6px" fontWeight="black">
-                          {payload.event.category.slice(0,3)}
-                        </text>
+                      <g>
+                        {payload.events.map((ev: any, idx: number) => {
+                          // 同じ日のイベントが重ならないように垂直方向にオフセット
+                          const offsetHeight = idx * 15;
+                          const targetY = baseBottomY + offsetHeight;
+                          const color = getEventColor(ev.category);
+                          
+                          return (
+                            <g key={idx} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
+                              {/* 垂直ガイド線（一番上のドットからのみ伸ばす） */}
+                              {idx === 0 && (
+                                <line x1={cx} y1={cy} x2={cx} y2={targetY} stroke={color} strokeWidth={0.5} strokeDasharray="3 3" opacity={0.3} />
+                              )}
+                              <circle cx={cx} cy={targetY} r={isMobile ? 5 : 6} fill={color} stroke="#fff" strokeWidth={1} />
+                              <text x={cx} y={targetY + 3} textAnchor="middle" fill="#fff" fontSize="6px" fontWeight="black" pointerEvents="none">
+                                {ev.category.slice(0,1)}
+                              </text>
+                              {/* モバイルでなければカテゴリ名を添える */}
+                              {!isMobile && idx === 0 && (
+                                <text x={cx + 10} y={targetY + 3} fill={color} fontSize="6px" fontWeight="bold">
+                                  {ev.category}
+                                </text>
+                              )}
+                            </g>
+                          );
+                        })}
                       </g>
                     );
                   }} 
