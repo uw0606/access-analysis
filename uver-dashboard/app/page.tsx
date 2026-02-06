@@ -266,7 +266,7 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px', paddingBottom: '20px' }} />
                 
-                {/* イベント散布図：X軸付近に固定しつつ、重なりを回避 */}
+                {/* イベント散布図：X軸付近に固定しつつ、重なりを回避し、アニメーションを追加 */}
                 <Scatter 
                   name="Events" 
                   dataKey="eventPos" 
@@ -291,7 +291,9 @@ export default function Home() {
                               {idx === 0 && (
                                 <line x1={cx} y1={cy} x2={cx} y2={targetY} stroke={color} strokeWidth={0.5} strokeDasharray="3 3" opacity={0.3} />
                               )}
-                              <circle cx={cx} cy={targetY} r={isMobile ? 5 : 6} fill={color} stroke="#fff" strokeWidth={1} />
+                              {/* アニメーションと半径をSNS解析ページと合わせる */}
+                              <circle cx={cx} cy={targetY} r={6} fill={color} opacity={0.15} className="animate-pulse" />
+                              <circle cx={cx} cy={targetY} r={3} fill={color} stroke="#fff" strokeWidth={0.5} />
                               <text x={cx} y={targetY + 3} textAnchor="middle" fill="#fff" fontSize="6px" fontWeight="black" pointerEvents="none">
                                 {ev.category.slice(0,1)}
                               </text>
