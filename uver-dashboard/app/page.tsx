@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 import React, { useEffect, useState } from "react";
 import { supabase } from "./supabase"; 
 import { 
-  ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
 // チャートデータの型定義
@@ -14,7 +14,6 @@ type ChartPoint = {
   name: string;
   fullDate: string;
   totalGrowth: number;
-  event?: any; // イベント情報を追加
   [key: string]: any; 
 };
 
@@ -84,8 +83,7 @@ export default function Home() {
         .limit(4000); 
 
       const { data: eventData } = await supabase.from("calendar_events").select("*");
-      const evs = eventData || [];
-      setEvents(evs);
+      setEvents(eventData || []);
 
       if (statsError) throw statsError;
 
@@ -115,17 +113,11 @@ export default function Home() {
           songsMap[s.title].history[dateStr] = Number(s.views);
         });
 
-        // チャートデータの初期化時にイベントを紐付け
-        const tempChartData: ChartPoint[] = uniqueDates.map(date => {
-          // calendar_eventsのevent_dateと一致するかチェック (YYYY-MM-DD か YYYY/MM/DD の差異を吸収)
-          const dayEvent = evs.find(e => e.event_date.replace(/-/g, '/') === date);
-          return {
-            name: formatChartDate(date),
-            fullDate: date,
-            totalGrowth: 0,
-            event: dayEvent || null
-          };
-        });
+        const tempChartData: ChartPoint[] = uniqueDates.map(date => ({
+          name: formatChartDate(date),
+          fullDate: date,
+          totalGrowth: 0
+        }));
 
         const songsArray = Object.values(songsMap);
 
@@ -226,7 +218,7 @@ export default function Home() {
 
         <div className="mb-8 bg-zinc-900/40 p-4 md:p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-            <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+            <div className="flex items-center gap-4">
               <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics</h2>
               <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
                 {(['top5', 'total', 'single'] as const).map((mode) => (
@@ -235,22 +227,6 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-
-              {viewMode === "single" && (
-                <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                  <select 
-                    value={selectedSong} 
-                    onChange={(e) => setSelectedSong(e.target.value)}
-                    className="bg-zinc-950 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-black outline-none focus:ring-1 focus:ring-red-600 transition-all uppercase cursor-pointer"
-                  >
-                    {tableData.map(song => (
-                      <option key={song.title} value={song.title}>
-                        {song.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </div>
           </div>
 
@@ -263,16 +239,9 @@ export default function Home() {
                 <Tooltip 
                   content={({ active, payload, label }) => {
                     if (!active || !payload) return null;
-                    const dayEvent = payload[0]?.payload?.event;
                     return (
                       <div className="bg-black/90 border border-zinc-800 p-2 rounded-lg text-[9px] shadow-2xl backdrop-blur-md">
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
-                        {dayEvent && (
-                          <div className="mb-2 p-1.5 bg-zinc-800 rounded border-l-2 border-red-600">
-                            <p className="text-red-500 font-black uppercase text-[7px] mb-0.5">Event</p>
-                            <p className="text-white font-bold leading-tight">{dayEvent.title}</p>
-                          </div>
-                        )}
                         {payload.filter(p => p.name !== "Events").map((p: any) => (
                           <div key={p.name} className="flex justify-between gap-4">
                             <span style={{ color: p.color }} className="font-bold">{p.name}</span>
@@ -284,29 +253,6 @@ export default function Home() {
                   }}
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px' }} />
-                
-                {/* イベントを表示するScatter */}
-                <Scatter 
-                  name="Events" 
-                  dataKey="totalGrowth" 
-                  shape={(props: any) => {
-                    const { cx, cy, payload } = props;
-                    if (!payload.event) return <rect />; // イベントがない場合は何も描画しない
-                    return (
-                      <circle 
-                        cx={cx} 
-                        cy={cy} 
-                        r={isMobile ? 4 : 6} 
-                        fill={getEventColor(payload.event.category)} 
-                        stroke="#fff" 
-                        strokeWidth={2}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setSelectedEvent(payload.event)}
-                      />
-                    );
-                  }} 
-                />
-
                 {viewMode === "top5" && tableData.slice(0, 5).map((song, idx) => (
                   <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} />
                 ))}
@@ -317,7 +263,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブルセクション */}
+        {/* テーブルセクション: ズレ修正済み */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
@@ -352,13 +298,17 @@ export default function Home() {
                     <td className="p-2 border-r border-zinc-800 text-zinc-600 font-mono text-center hidden md:table-cell italic">{song.publishedAt}</td>
                     {dates.map(date => (
                       <React.Fragment key={`${song.title}-${date}`}>
+                        {/* 1: 累計 */}
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
+                        {/* 2: 増分 */}
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
                           {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
                         </td>
+                        {/* 3: 順位 (スマホでは非表示) */}
                         <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">
                           {song.history[`${date}_v_rank`] || "-"}
                         </td>
+                        {/* 4: 成長推移 */}
                         <td className="p-1.5 border-r border-zinc-800 text-center font-black text-white">
                           <div className="flex items-center justify-center gap-0.5">
                             <RankIcon status={song.history[`${date}_diff`]} />
