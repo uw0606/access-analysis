@@ -139,7 +139,7 @@ export default function SnsStats() {
         </div>
         <div className="h-[400px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={platformData} margin={{ bottom: 0, top: 10 }}>
+            <ComposedChart data={platformData} margin={{ bottom: 30, top: 10 }}>
               <CartesianGrid stroke="#18181b" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
               <YAxis yAxisId="left" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => v.toLocaleString()} />
@@ -175,11 +175,44 @@ export default function SnsStats() {
                 }}
               />
               <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '10px', paddingBottom: '25px' }} />
+              
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
+
+              {/* 【修正箇所】イベント用ドットの追加 */}
+              <Line
+                yAxisId="left"
+                dataKey="follower_count"
+                stroke="none"
+                name="Events"
+                isAnimationActive={false}
+                dot={(props) => {
+                  const { cx, payload } = props;
+                  if (!cx) return <React.Fragment key={Math.random()} />;
+                  const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.date);
+                  const dotBaseY = 340; 
+                  return (
+                    <g key={`ev-group-${payload.date}-${title}`} style={{ overflow: 'visible' }}>
+                      {dayEvents.map((ev, index) => {
+                        const currentY = dotBaseY + (index * 13);
+                        let evColor = '#ef4444';
+                        if (ev.category === 'RELEASE') evColor = '#eab308';
+                        if (ev.category === 'TV') evColor = '#10b981';
+                        return (
+                          <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
+                            <circle cx={cx} cy={currentY} r={5} fill={evColor} opacity={0.2} className="animate-pulse" />
+                            <circle cx={cx} cy={currentY} r={2.5} fill={evColor} />
+                          </g>
+                        );
+                      })}
+                    </g>
+                  );
+                }}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+        {/* ...（以下、履歴テーブル部分は変更なし） */}
         <div className="rounded-lg border border-zinc-800 bg-black/40 overflow-hidden">
           <div className="max-h-[200px] overflow-y-auto">
             <table className="w-full text-[10px] font-mono border-separate border-spacing-0">
@@ -216,12 +249,29 @@ export default function SnsStats() {
 
   return (
     <main className="min-h-screen bg-black text-white p-4 md:p-12 relative">
+      {/* イベント詳細モーダル */}
+      {selectedEvent && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
+          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl text-[11px]">
+            <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
+            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 ${selectedEvent.category === 'LIVE' ? 'bg-red-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>
+              {selectedEvent.category}
+            </div>
+            <p className="text-zinc-500 font-mono mb-1">{selectedEvent.event_date}</p>
+            <h2 className="text-xl font-black italic uppercase leading-tight mb-4 tracking-tighter text-white">{selectedEvent.title}</h2>
+            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 leading-relaxed whitespace-pre-wrap">
+              {selectedEvent.description || "詳細情報はありません。"}
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="mb-12 max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 border-b border-zinc-800 pb-8">
         <div>
           <h1 className="text-3xl font-black italic uppercase tracking-tighter">SNS <span className="text-red-600">Analytics</span></h1>
           <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Follower Growth & Social Impact</p>
         </div>
-        {/* 【修正】ボタンナビゲーションの順序とリンク先 */}
         <div className="flex flex-wrap justify-center gap-3">
           <a href="/calendar" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
           <a href="/" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">YouTube動画アクセス解析</a>
