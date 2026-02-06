@@ -133,7 +133,7 @@ export default function SnsStats() {
 
         <div className="h-[400px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
-            {/* margin bottom をさらに増やして(100)広大なスペースを確保 */}
+            {/* margin bottom をさらに増やして(50)広大なスペースを確保 */}
             <ComposedChart data={platformData} margin={{ bottom: 50, top: 10 }}>
               <CartesianGrid stroke="#18181b" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
@@ -170,7 +170,7 @@ export default function SnsStats() {
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
 
-              {/* 【修正】イベントドットをさらに下（430）に配置 */}
+              {/* 【修正】イベントドットをさらに下（360）に配置 */}
               <Line
                 yAxisId="left"
                 dataKey="follower_count"
@@ -182,7 +182,7 @@ export default function SnsStats() {
                   if (!cx) return <React.Fragment key={Math.random()} />;
                   const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.date);
                   
-                  // ここを 430 に下げました
+                  // ここを 360 に下げました
                   const dotBaseY = 360; 
                   return (
                     <g key={`ev-group-${payload.date}-${title}`} style={{ overflow: 'visible' }}>
