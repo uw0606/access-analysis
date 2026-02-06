@@ -196,12 +196,11 @@ export default function Home() {
             <h1 className="text-3xl font-black italic uppercase tracking-tighter">Video <span className="text-red-600">Analytics</span></h1>
             <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
           </div>
-          {/* 【修正箇所】リンクナビゲーション */}
+          {/* 【修正】リンクナビゲーション: パスを修正しリフレッシュを削除 */}
           <div className="flex flex-wrap justify-center gap-3">
-            <button onClick={fetchData} className="text-[9px] border border-zinc-800 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest">↻ Refresh</button>
             <a href="/calendar" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
             <a href="/sns" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">SNSアクセス解析</a>
-            <a href="/survey" className="text-[9px] bg-white text-black px-5 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">ライブアンケート解析 →</a>
+            <a href="/analysis" className="text-[9px] bg-white text-black px-5 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">ライブアンケート解析 →</a>
           </div>
         </header>
 
