@@ -162,6 +162,7 @@ export default function Home() {
         
         setTableData(sortedResult);
         setChartData(tempChartData);
+        // データ取得時に最初の動画を選択状態にする
         if (sortedResult.length > 0) setSelectedSong(sortedResult[0].title);
       }
     } catch (err) { 
@@ -218,7 +219,7 @@ export default function Home() {
 
         <div className="mb-8 bg-zinc-900/40 p-4 md:p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
               <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics</h2>
               <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
                 {(['top5', 'total', 'single'] as const).map((mode) => (
@@ -227,6 +228,23 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+
+              {/* SINGLEモードの時だけ曲選択プルダウンを表示 */}
+              {viewMode === "single" && (
+                <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                  <select 
+                    value={selectedSong} 
+                    onChange={(e) => setSelectedSong(e.target.value)}
+                    className="bg-zinc-950 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-black outline-none focus:ring-1 focus:ring-red-600 transition-all uppercase cursor-pointer"
+                  >
+                    {tableData.map(song => (
+                      <option key={song.title} value={song.title}>
+                        {song.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -263,7 +281,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブルセクション: ズレ修正済み */}
+        {/* テーブルセクション */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
@@ -298,17 +316,13 @@ export default function Home() {
                     <td className="p-2 border-r border-zinc-800 text-zinc-600 font-mono text-center hidden md:table-cell italic">{song.publishedAt}</td>
                     {dates.map(date => (
                       <React.Fragment key={`${song.title}-${date}`}>
-                        {/* 1: 累計 */}
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
-                        {/* 2: 増分 */}
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
                           {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
                         </td>
-                        {/* 3: 順位 (スマホでは非表示) */}
                         <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">
                           {song.history[`${date}_v_rank`] || "-"}
                         </td>
-                        {/* 4: 成長推移 */}
                         <td className="p-1.5 border-r border-zinc-800 text-center font-black text-white">
                           <div className="flex items-center justify-center gap-0.5">
                             <RankIcon status={song.history[`${date}_diff`]} />
