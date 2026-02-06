@@ -2,9 +2,11 @@ name: UVERworld Data Sync
 
 on:
   schedule:
-    # 毎日 JST 0:00 (UTC 15:00)
-    - cron: '0 15 * * *'
-  workflow_dispatch:           # 手動実行ボタン（テスト時に便利です）
+    # 毎日 JST 0:15 (UTC 15:15) -> 公式アカウント用
+    - cron: '15 15 * * *'
+    # 毎日 JST 1:15 (UTC 16:15) -> TAKUYA∞用
+    - cron: '15 16 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,28 +23,28 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # インスタ取得のために instaloader を最新版で確実にインストール
-          if [ -f requirements.txt ]; then 
-            pip install -r requirements.txt
-          else 
-            pip install requests beautifulsoup4 supabase instaloader --upgrade
-          fi
+          pip install requests beautifulsoup4 supabase instaloader --upgrade
 
-      - name: Run Daily Sync (YouTube & SNS)
+      - name: Run Daily Sync
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
-          # YouTubeデータの同期
-          python uver_to_supabase.py
-          # SNS（Instagram/TikTok）データの同期を再開
-          python sns_to_supabase.py
-
-      - name: Run Weekly Sync (Official Schedule)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: |
-          # 公式スケジュールの同期
-          python sync_all_data.py
+          # UTC時間を取得（15時台なら公式、16時台ならTAKUYA∞）
+          HOUR=$(date +%H)
+          if [ "$HOUR" == "15" ]; then
+            echo "--- Execution: Account 1 (Official) ---"
+            python sns_to_supabase.py --target official
+            # YouTubeとスケジュール同期は0:15の回にまとめて実行
+            python uver_to_supabase.py
+            python sync_all_data.py
+          elif [ "$HOUR" == "16" ]; then
+            echo "--- Execution: Account 2 (Takuya) ---"
+            python sns_to_supabase.py --target takuya
+          else
+            echo "--- Manual Execution: Running Both ---"
+            python sns_to_supabase.py --target official
+            sleep 60
+            python sns_to_supabase.py --target takuya
+          fi
