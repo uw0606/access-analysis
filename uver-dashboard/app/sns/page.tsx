@@ -131,10 +131,10 @@ export default function SnsStats() {
           </div>
         </div>
 
-        <div className="h-[500px] w-full mb-6">
+        <div className="h-[450px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
             {/* margin bottom をさらに増やして(100)広大なスペースを確保 */}
-            <ComposedChart data={platformData} margin={{ bottom: 100, top: 10 }}>
+            <ComposedChart data={platformData} margin={{ bottom: 80, top: 10 }}>
               <CartesianGrid stroke="#18181b" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
               <YAxis yAxisId="left" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => v.toLocaleString()} />
