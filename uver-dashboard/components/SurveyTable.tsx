@@ -237,20 +237,11 @@ export default function SurveyTable() {
           </div>
         </header>
 
-        {/* 【修正】ナビゲーション: 指定の順序に変更 */}
+        {/* ナビゲーション */}
         <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
-          <a href="/calendar" 
-             className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
-             カレンダー
-          </a>
-          <a href="/" 
-             className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
-             YouTube動画アクセス解析
-          </a>
-          <a href="/sns" 
-             className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
-             SNSアクセス解析
-          </a>
+          <a href="/calendar" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">カレンダー</a>
+          <a href="/" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">YouTube動画アクセス解析</a>
+          <a href="/sns" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">SNSアクセス解析</a>
         </div>
 
         {view === 'import' ? (
@@ -367,8 +358,8 @@ export default function SurveyTable() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className={`lg:col-span-2 bg-zinc-950 p-8 rounded-[40px] border border-zinc-800 ${activeTab === 'prefecture' ? 'h-auto min-h-[500px]' : 'h-[450px]'}`}>
-                  <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? chartData.length * 30 + 100 : "100%"}>
+                <div className={`lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 ${activeTab === 'prefecture' ? 'h-auto min-h-[600px]' : 'h-[450px]'}`}>
+                  <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : "100%"}>
                     {activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age' ? (
                       <PieChart>
                         <Pie data={activeTab === 'age' ? ageGroupData : chartData} innerRadius={100} outerRadius={140} paddingAngle={8} dataKey="value" nameKey="name" stroke="none">
@@ -380,10 +371,38 @@ export default function SurveyTable() {
                         <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '30px' }} />
                       </PieChart>
                     ) : (
-                      <BarChart data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
-                        {activeTab === 'prefecture' ? <><XAxis type="number" hide /><YAxis dataKey="name" type="category" stroke="#52525b" fontSize={9} width={80} interval={0} /></> : <><XAxis dataKey="name" stroke="#52525b" fontSize={8} /><YAxis stroke="#52525b" fontSize={8} /></>}
-                        <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={15} />
+                      <BarChart 
+                        data={chartData} 
+                        layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
+                        margin={{ left: activeTab === 'prefecture' ? 20 : 0, right: 30, top: 20, bottom: 20 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
+                        {activeTab === 'prefecture' ? (
+                          <>
+                            <XAxis type="number" hide />
+                            <YAxis 
+                              dataKey="name" 
+                              type="category" 
+                              stroke="#a1a1aa" 
+                              fontSize={10} 
+                              width={100} 
+                              interval={0}
+                              tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <XAxis dataKey="name" stroke="#52525b" fontSize={8} />
+                            <YAxis stroke="#52525b" fontSize={8} />
+                          </>
+                        )}
+                        <Bar 
+                          dataKey="value" 
+                          fill="#ef4444" 
+                          radius={[0, 4, 4, 0]} 
+                          barSize={activeTab === 'prefecture' ? 18 : 15} 
+                        />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                       </BarChart>
                     )}
                   </ResponsiveContainer>
