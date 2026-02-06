@@ -66,11 +66,9 @@ export default function SurveyTable() {
     }));
   }, [tableData]);
 
-  // 【修正】3. Registered Live (Date) の選択肢を 1と2の選択状況で絞り込む
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
-      // フィルタ条件との照合
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
 
@@ -239,18 +237,23 @@ export default function SurveyTable() {
           </div>
         </header>
 
-        <div className="flex gap-2 mb-10 overflow-x-auto pb-2 border-t border-zinc-900 pt-4">
-          <a href="https://access-analysis.vercel.app/calendar" target="_blank" rel="noopener noreferrer" 
-             className="px-4 py-2 bg-zinc-950 border border-red-900/30 rounded-lg text-[8px] font-mono text-red-500 hover:bg-red-600 hover:text-white transition-all whitespace-nowrap uppercase">
-             カレンダー
-          </a>
-          <a href="https://access-analysis.vercel.app/" target="_blank" rel="noopener noreferrer" 
-             className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-[8px] font-mono text-zinc-500 hover:text-white transition-all whitespace-nowrap uppercase">
+        {/* 【修正】ナビゲーション: 他の解析サイトと順序・デザインを完全に統一 */}
+        <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
+          <a href="/" 
+             className="px-5 py-2 bg-zinc-950 border border-zinc-800 rounded-full text-[9px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
              YouTube動画アクセス解析
           </a>
-          <a href="https://access-analysis.vercel.app/sns" target="_blank" rel="noopener noreferrer" 
-             className="px-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-[8px] font-mono text-zinc-500 hover:text-white transition-all whitespace-nowrap uppercase">
+          <a href="/calendar" 
+             className="px-5 py-2 bg-zinc-950 border border-zinc-800 rounded-full text-[9px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
+             カレンダー
+          </a>
+          <a href="/sns" 
+             className="px-5 py-2 bg-zinc-950 border border-zinc-800 rounded-full text-[9px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
              SNSアクセス解析
+          </a>
+          <a href="/analysis" 
+             className="px-5 py-2 bg-white border border-white rounded-full text-[9px] font-bold text-black hover:bg-red-600 hover:border-red-600 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
+             ライブアンケート解析 →
           </a>
         </div>
 
