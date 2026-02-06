@@ -9,7 +9,7 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-// チャートデータの型定義（動的なキーを許可）
+// チャートデータの型定義
 type ChartPoint = {
   name: string;
   fullDate: string;
@@ -17,18 +17,17 @@ type ChartPoint = {
   [key: string]: any; 
 };
 
-// 【追加】イベントカテゴリに応じた色を返す関数
+// イベントカテゴリに応じた色を返す関数
 const getEventColor = (category: string) => {
   switch (category) {
-    case 'LIVE': return '#dc2626';    // bg-red-600
-    case 'RELEASE': return '#eab308'; // bg-yellow-500
-    case 'TV': return '#10b981';      // bg-emerald-500
-    case 'OTHER': return '#2563eb';   // bg-blue-600
-    default: return '#52525b';        // bg-zinc-600
+    case 'LIVE': return '#dc2626';
+    case 'RELEASE': return '#eab308';
+    case 'TV': return '#10b981';
+    case 'OTHER': return '#2563eb';
+    default: return '#52525b';
   }
 };
 
-// 日付フォーマットを JST(日本時間)基準で YYYY/MM/DD に固定
 const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
@@ -177,7 +176,7 @@ export default function Home() {
   if (loading) return <div className="bg-black text-white min-h-screen flex items-center justify-center font-mono animate-pulse tracking-widest text-xs uppercase">Connecting Data Matrix...</div>;
 
   return (
-    <main className="min-h-screen bg-black text-white p-4 md:p-12 font-sans text-[10px] relative">
+    <main className="min-h-screen bg-black text-white p-2 md:p-12 font-sans text-[10px] relative">
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
@@ -196,25 +195,25 @@ export default function Home() {
       )}
 
       <div className="max-w-[100vw] mx-auto">
-        <header className="mb-12 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6 border-b border-zinc-800 pb-8">
+        <header className="mb-8 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 border-b border-zinc-800 pb-6">
           <div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter">Video <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
+            <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter">Video <span className="text-red-600">Analytics</span></h1>
+            <p className="text-zinc-500 text-[8px] md:text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
           </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            <a href="/calendar" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
-            <a href="/sns" className="text-[9px] bg-zinc-900 text-zinc-400 px-5 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">SNSアクセス解析</a>
-            <a href="/analysis" className="text-[9px] bg-white text-black px-5 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">ライブアンケート解析 →</a>
+          <div className="flex flex-wrap justify-center gap-2">
+            <a href="/calendar" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">カレンダー</a>
+            <a href="/sns" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">SNS解析</a>
+            <a href="/analysis" className="text-[8px] md:text-[9px] bg-white text-black px-4 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">解析 →</a>
           </div>
         </header>
 
-        <div className="mb-12 bg-zinc-900/40 p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
+        <div className="mb-8 bg-zinc-900/40 p-4 md:p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex items-center gap-4">
               <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics</h2>
               <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
                 {(['top5', 'total', 'single'] as const).map((mode) => (
-                  <button key={mode} onClick={() => setViewMode(mode)} className={`px-4 py-1.5 rounded-md text-[8px] font-black transition-all uppercase ${viewMode === mode ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                  <button key={mode} onClick={() => setViewMode(mode)} className={`px-2 md:px-4 py-1.5 rounded-md text-[8px] font-black transition-all uppercase ${viewMode === mode ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
                     {mode}
                   </button>
                 ))}
@@ -227,89 +226,54 @@ export default function Home() {
             )}
           </div>
 
-          <div className="h-[420px] w-full mb-6">
+          <div className="h-[320px] md:h-[420px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ bottom: 0, top: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
-                <XAxis dataKey="name" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} dy={5} height={100} />
-                <YAxis stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
-                
+                <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
+                <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                 <Tooltip 
                   content={({ active, payload, label }) => {
                     if (!active || !payload) return null;
-                    const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === label);
                     return (
-                      <div className="bg-black/90 border border-zinc-800 p-3 rounded-lg text-[10px] shadow-2xl backdrop-blur-md">
+                      <div className="bg-black/90 border border-zinc-800 p-2 rounded-lg text-[9px] shadow-2xl backdrop-blur-md">
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
                         {payload.filter(p => p.name !== "Events").map((p: any) => (
-                          <div key={p.name} className="flex justify-between gap-6 py-0.5">
+                          <div key={p.name} className="flex justify-between gap-4">
                             <span style={{ color: p.color }} className="font-bold">{p.name}</span>
                             <span className="font-mono text-zinc-300">+{p.value.toLocaleString()}</span>
                           </div>
                         ))}
-                        {dayEvents.length > 0 && (
-                          <div className="mt-3 pt-2 border-t border-zinc-800">
-                            <p className="text-zinc-500 font-black italic uppercase text-[7px] mb-2 tracking-widest">★ EVENTS</p>
-                            {dayEvents.map((ev, i) => (
-                              <div key={i} className="flex items-center gap-2 mb-1.5">
-                                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getEventColor(ev.category) }} />
-                                <p className="text-white font-bold leading-tight">{ev.title}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     );
                   }}
                 />
-                <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '9px', paddingBottom: '25px' }} />
-                
-                <Line
-                  dataKey="totalGrowth" stroke="none" name="Events" isAnimationActive={false}
-                  dot={(props) => {
-                    const { cx, payload } = props;
-                    if (!cx) return <React.Fragment key={Math.random()} />;
-                    const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.name);
-                    const dotBaseY = 360; 
-                    return (
-                      <g key={`ev-group-${payload.name}`} style={{ overflow: 'visible' }}>
-                        {dayEvents.map((ev, index) => {
-                          const currentY = dotBaseY + (index * 13);
-                          const evColor = getEventColor(ev.category);
-                          return (
-                            <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
-                              <circle cx={cx} cy={currentY} r={5} fill={evColor} opacity={0.3} className="animate-ping" style={{ transformBox: 'fill-box', transformOrigin: 'center' }} />
-                              <circle cx={cx} cy={currentY} r={2.5} fill={evColor} />
-                            </g>
-                          );
-                        })}
-                      </g>
-                    );
-                  }}
-                />
-
+                <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px' }} />
                 {viewMode === "top5" && tableData.slice(0, 5).map((song, idx) => (
-                  <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+                  <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} />
                 ))}
-                {viewMode === "total" && <Line type="monotone" dataKey="totalGrowth" name="UVERworld Total" stroke="#ffffff" strokeWidth={3} dot={{ r: 4 }} />}
-                {viewMode === "single" && selectedSong && <Line type="monotone" dataKey={selectedSong} name={selectedSong} stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} />}
+                {viewMode === "total" && <Line type="monotone" dataKey="totalGrowth" name="UVERworld Total" stroke="#ffffff" strokeWidth={3} dot={false} />}
+                {viewMode === "single" && selectedSong && <Line type="monotone" dataKey={selectedSong} name={selectedSong} stroke="#ef4444" strokeWidth={3} dot={false} />}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* 【修正】テーブル部分: スマホ最適化（カラム幅固定と省略表示） */}
+        {/* テーブルセクション: スマホ極限最適化 */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
-          <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[9px]">
+          <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
-              <tr className="bg-zinc-950 text-zinc-500 uppercase tracking-widest font-bold">
-                {/* アーティスト名列: 幅を60pxに固定 */}
-                <th className="p-4 sticky left-0 bg-zinc-950 z-40 border-b border-r border-zinc-800 text-[10px] w-[60px]">Artist</th>
-                {/* 曲名列: 幅を120pxに固定（PCでは広がる） */}
-                <th className="p-4 sticky left-[60px] bg-zinc-950 z-40 border-b border-r border-zinc-800 text-[10px] w-[120px] md:w-[200px]">Song Title</th>
-                <th className="p-4 border-b border-r border-zinc-800 text-center">Released</th>
+              <tr className="bg-zinc-950 text-zinc-500 uppercase font-bold">
+                {/* 固定列: アーティスト名 (スマホ幅 40px) */}
+                <th className="p-2 sticky left-0 bg-zinc-950 z-40 border-b border-r border-zinc-800 w-[40px]">Artist</th>
+                {/* 固定列: 曲名 (スマホ幅 85px) */}
+                <th className="p-2 sticky left-[40px] bg-zinc-950 z-40 border-b border-r border-zinc-800 w-[85px] md:w-[200px]">Song</th>
+                {/* 公開日: スマホでは非表示 */}
+                <th className="p-2 border-b border-r border-zinc-800 text-center hidden md:table-cell">Released</th>
                 {dates.map(date => (
-                  <th key={date} colSpan={4} className="p-3 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono">{date}</th>
+                  <th key={date} colSpan={4} className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono text-[7px] md:text-[9px]">
+                    {date.split('/').slice(1).join('/')}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -318,30 +282,28 @@ export default function Home() {
                 const isNew = isNewRelease(song.publishedAt);
                 return (
                   <tr key={song.title} className={`border-b border-zinc-800/40 hover:bg-white/5 transition-colors group ${isNew ? 'bg-red-900/10' : ''}`}>
-                    <td className="p-3 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[60px]">{song.artist}</td>
-                    
-                    {/* 曲名セル: truncateを適用して「...」表示に */}
-                    <td className="p-3 sticky left-[60px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[120px] md:w-[200px]">
+                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate text-[6px] md:text-[9px]">
+                      {song.artist.slice(0,4)}
+                    </td>
+                    <td className="p-2 sticky left-[40px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[85px] md:w-[200px]">
                       <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" 
-                         className="hover:text-red-500 transition-all flex items-center gap-2 underline underline-offset-4 decoration-zinc-800 truncate block">
+                         className="flex items-center gap-1 truncate block">
                         <span className="truncate">{song.title}</span>
-                        {isNew && <span className="text-[6px] bg-red-600 text-white px-1 py-0.5 rounded-full animate-pulse flex-shrink-0">NEW</span>}
+                        {isNew && <span className="text-[5px] bg-red-600 text-white px-0.5 rounded-full flex-shrink-0 animate-pulse">N</span>}
                       </a>
                     </td>
-
-                    <td className="p-3 border-r border-zinc-800 text-zinc-600 font-mono text-center text-[8px] italic">{song.publishedAt}</td>
-                    
+                    <td className="p-2 border-r border-zinc-800 text-zinc-600 font-mono text-center hidden md:table-cell italic">{song.publishedAt}</td>
                     {dates.map(date => (
                       <React.Fragment key={`${song.title}-${date}`}>
-                        <td className="p-3 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
-                        <td className="p-3 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
+                        <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
+                        <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
                           {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
                         </td>
-                        <td className="p-3 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[8px]">{song.history[`${date}_v_rank`] || "-"}</td>
-                        <td className="p-3 border-r border-zinc-800 text-center font-black text-white">
-                          <div className="flex items-center justify-center gap-1">
+                        <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden sm:table-cell">{song.history[`${date}_v_rank`] || "-"}</td>
+                        <td className="p-1.5 border-r border-zinc-800 text-center font-black text-white">
+                          <div className="flex items-center justify-center gap-0.5">
                             <RankIcon status={song.history[`${date}_diff`]} />
-                            <span className="text-[9px]">{song.history[`${date}_g_rank`] || "-"}</span>
+                            <span className="text-[7px] md:text-[9px]">{song.history[`${date}_g_rank`] || "-"}</span>
                           </div>
                         </td>
                       </React.Fragment>
