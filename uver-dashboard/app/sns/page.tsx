@@ -183,7 +183,7 @@ export default function SnsStats() {
                   const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.date);
                   
                   // ここを 430 に下げました
-                  const dotBaseY = 380; 
+                  const dotBaseY = 360; 
                   return (
                     <g key={`ev-group-${payload.date}-${title}`} style={{ overflow: 'visible' }}>
                       {dayEvents.map((ev, index) => {
