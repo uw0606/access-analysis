@@ -131,7 +131,7 @@ export default function SnsStats() {
           </div>
         </div>
 
-        <div className="h-[4500px] w-full mb-6">
+        <div className="h-[400px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
             {/* margin bottom をさらに増やして(100)広大なスペースを確保 */}
             <ComposedChart data={platformData} margin={{ bottom: 50, top: 10 }}>
