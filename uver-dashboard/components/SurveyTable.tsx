@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/app/supabase"; 
 import * as XLSX from 'xlsx';
 import { 
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, 
+  PieChart, Pie, Cell, Tooltip, 
   BarChart, Bar, XAxis, YAxis, Legend, CartesianGrid 
 } from 'recharts';
 
@@ -46,8 +46,9 @@ export default function SurveyTable() {
   const [activeTab, setActiveTab] = useState('song');
   const [isDragActive, setIsDragActive] = useState(false);
   
-  // 【最重要】描画準備完了フラグ
+  // マウントと画面幅の管理
   const [isReady, setIsReady] = useState(false);
+  const [chartWidth, setChartWidth] = useState(300);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -64,14 +65,27 @@ export default function SurveyTable() {
     fetchData(); 
   }, [fetchData]);
 
-  // タブ切り替えや読み込み完了時にわずかに遅延を入れてグラフを再描画させる
+  // 画面幅の計算とマウント待機
   useEffect(() => {
-    setIsReady(false);
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, 150); 
-    return () => clearTimeout(timer);
-  }, [activeTab, anaLiveKey, anaYear, anaType, loading]);
+    const updateSize = () => {
+      // 親要素のパディング分を考慮して幅を計算
+      const width = window.innerWidth;
+      if (width < 768) {
+        setChartWidth(width - 64); // スマホ用
+      } else {
+        setChartWidth(Math.min(width * 0.6, 800)); // PC用
+      }
+    };
+    
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    
+    const timer = setTimeout(() => setIsReady(true), 200);
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      clearTimeout(timer);
+    };
+  }, [activeTab]);
 
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
@@ -233,76 +247,74 @@ export default function SurveyTable() {
     return null;
   };
 
-  // グラフ描画関数
+  // グラフ描画関数（ResponsiveContainerを排除）
   const renderChartContent = () => {
-    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800">READY...</div>;
+    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-tighter">Initializing Chart...</div>;
 
     if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
       const data = activeTab === 'age' ? ageGroupData : chartData;
       return (
-        <div style={{ width: '100%', height: 400 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie 
-                data={data} 
-                innerRadius={80} 
-                outerRadius={120} 
-                paddingAngle={5} 
-                dataKey="value" 
-                nameKey="name" 
-                stroke="none"
-                isAnimationActive={false}
-              >
-                {data.map((entry, i) => (
-                  <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '20px' }} />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className="flex justify-center items-center w-full min-h-[400px]">
+          <PieChart width={chartWidth} height={400}>
+            <Pie 
+              data={data} 
+              innerRadius={80} 
+              outerRadius={120} 
+              paddingAngle={5} 
+              dataKey="value" 
+              nameKey="name" 
+              stroke="none"
+              isAnimationActive={false}
+            >
+              {data.map((entry, i) => (
+                <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', textTransform: 'uppercase', paddingTop: '20px' }} />
+          </PieChart>
         </div>
       );
     } else {
       const dynamicHeight = activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : 400;
       return (
-        <div style={{ width: '100%', height: dynamicHeight }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart 
-              data={chartData} 
-              layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
-              margin={{ left: 10, right: 30, top: 10, bottom: 10 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
-              {activeTab === 'prefecture' ? (
-                <>
-                  <XAxis type="number" hide />
-                  <YAxis 
-                    dataKey="name" 
-                    type="category" 
-                    stroke="#a1a1aa" 
-                    fontSize={11} 
-                    width={90} 
-                    interval={0}
-                    tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
-                  />
-                </>
-              ) : (
-                <>
-                  <XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} />
-                  <YAxis stroke="#52525b" fontSize={9} />
-                </>
-              )}
-              <Bar 
-                dataKey="value" 
-                fill="#ef4444" 
-                radius={[0, 4, 4, 0]} 
-                barSize={activeTab === 'prefecture' ? 20 : 15}
-                isAnimationActive={false}
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="flex justify-center w-full" style={{ minHeight: dynamicHeight }}>
+          <BarChart 
+            width={chartWidth} 
+            height={dynamicHeight} 
+            data={chartData} 
+            layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
+            margin={{ left: 5, right: 30, top: 10, bottom: 10 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
+            {activeTab === 'prefecture' ? (
+              <>
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  stroke="#a1a1aa" 
+                  fontSize={11} 
+                  width={90} 
+                  interval={0}
+                  tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
+                />
+              </>
+            ) : (
+              <>
+                <XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} />
+                <YAxis stroke="#52525b" fontSize={9} />
+              </>
+            )}
+            <Bar 
+              dataKey="value" 
+              fill="#ef4444" 
+              radius={[0, 4, 4, 0]} 
+              barSize={activeTab === 'prefecture' ? 20 : 15}
+              isAnimationActive={false}
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
+          </BarChart>
         </div>
       );
     }
@@ -316,7 +328,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">UVER <span className="text-red-600">Metric</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.3</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.4</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-5 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 hover:text-white transition-all flex items-center gap-2">Setlist Site ↗</a>
@@ -446,7 +458,7 @@ export default function SurveyTable() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden">
+                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden flex justify-center">
                    {renderChartContent()}
                 </div>
                 <div className={`bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto ${activeTab === 'prefecture' ? 'h-auto max-h-[1000px]' : 'max-h-[450px]'}`}>
