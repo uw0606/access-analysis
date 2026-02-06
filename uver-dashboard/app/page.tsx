@@ -183,7 +183,6 @@ export default function Home() {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
           <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
-            {/* 【修正】モーダル内のバッジ色もカテゴリに合わせる */}
             <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white`} style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
               {selectedEvent.category}
             </div>
@@ -276,7 +275,6 @@ export default function Home() {
                       <g key={`ev-group-${payload.name}`} style={{ overflow: 'visible' }}>
                         {dayEvents.map((ev, index) => {
                           const currentY = dotBaseY + (index * 13);
-                          {/* 【修正】カテゴリに応じた色を適用 */}
                           const evColor = getEventColor(ev.category);
                           return (
                             <g key={`${ev.id}-${index}`} onClick={() => setSelectedEvent(ev)} className="cursor-pointer">
@@ -300,13 +298,15 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブル部分は変更なし */}
+        {/* 【修正】テーブル部分: スマホ最適化（カラム幅固定と省略表示） */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[9px]">
             <thead>
               <tr className="bg-zinc-950 text-zinc-500 uppercase tracking-widest font-bold">
-                <th className="p-4 sticky left-0 bg-zinc-950 z-30 border-b border-r border-zinc-800 text-[10px]">Artist</th>
-                <th className="p-4 sticky left-[80px] bg-zinc-950 z-30 border-b border-r border-zinc-800 text-[10px]">Song Title</th>
+                {/* アーティスト名列: 幅を60pxに固定 */}
+                <th className="p-4 sticky left-0 bg-zinc-950 z-40 border-b border-r border-zinc-800 text-[10px] w-[60px]">Artist</th>
+                {/* 曲名列: 幅を120pxに固定（PCでは広がる） */}
+                <th className="p-4 sticky left-[60px] bg-zinc-950 z-40 border-b border-r border-zinc-800 text-[10px] w-[120px] md:w-[200px]">Song Title</th>
                 <th className="p-4 border-b border-r border-zinc-800 text-center">Released</th>
                 {dates.map(date => (
                   <th key={date} colSpan={4} className="p-3 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono">{date}</th>
@@ -318,14 +318,19 @@ export default function Home() {
                 const isNew = isNewRelease(song.publishedAt);
                 return (
                   <tr key={song.title} className={`border-b border-zinc-800/40 hover:bg-white/5 transition-colors group ${isNew ? 'bg-red-900/10' : ''}`}>
-                    <td className="p-3 sticky left-0 bg-black z-10 border-r border-zinc-800 text-zinc-600 font-bold">{song.artist}</td>
-                    <td className="p-3 sticky left-[80px] bg-black z-10 border-r border-zinc-800 font-black text-white">
-                      <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" className="hover:text-red-500 transition-all flex items-center gap-2 underline underline-offset-4 decoration-zinc-800">
-                        {song.title}
-                        {isNew && <span className="text-[7px] bg-red-600 text-white px-1.5 py-0.5 rounded-full animate-pulse">NEW</span>}
+                    <td className="p-3 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[60px]">{song.artist}</td>
+                    
+                    {/* 曲名セル: truncateを適用して「...」表示に */}
+                    <td className="p-3 sticky left-[60px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[120px] md:w-[200px]">
+                      <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" 
+                         className="hover:text-red-500 transition-all flex items-center gap-2 underline underline-offset-4 decoration-zinc-800 truncate block">
+                        <span className="truncate">{song.title}</span>
+                        {isNew && <span className="text-[6px] bg-red-600 text-white px-1 py-0.5 rounded-full animate-pulse flex-shrink-0">NEW</span>}
                       </a>
                     </td>
+
                     <td className="p-3 border-r border-zinc-800 text-zinc-600 font-mono text-center text-[8px] italic">{song.publishedAt}</td>
+                    
                     {dates.map(date => (
                       <React.Fragment key={`${song.title}-${date}`}>
                         <td className="p-3 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
