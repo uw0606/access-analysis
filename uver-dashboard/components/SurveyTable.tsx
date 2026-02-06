@@ -237,7 +237,6 @@ export default function SurveyTable() {
           </div>
         </header>
 
-        {/* ナビゲーション */}
         <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
           <a href="/calendar" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">カレンダー</a>
           <a href="/" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">YouTube動画アクセス解析</a>
@@ -362,7 +361,16 @@ export default function SurveyTable() {
                   <ResponsiveContainer width="100%" height={activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : "100%"}>
                     {activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age' ? (
                       <PieChart>
-                        <Pie data={activeTab === 'age' ? ageGroupData : chartData} innerRadius={100} outerRadius={140} paddingAngle={8} dataKey="value" nameKey="name" stroke="none">
+                        <Pie 
+                          data={activeTab === 'age' ? ageGroupData : chartData} 
+                          innerRadius={100} 
+                          outerRadius={140} 
+                          paddingAngle={8} 
+                          dataKey="value" 
+                          nameKey="name" 
+                          stroke="none"
+                          isAnimationActive={false}
+                        >
                           {(activeTab === 'age' ? ageGroupData : chartData).map((entry, i) => (
                             <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
                           ))}
@@ -374,7 +382,7 @@ export default function SurveyTable() {
                       <BarChart 
                         data={chartData} 
                         layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'}
-                        margin={{ left: activeTab === 'prefecture' ? 20 : 0, right: 30, top: 20, bottom: 20 }}
+                        margin={{ left: activeTab === 'prefecture' ? 40 : 0, right: 30, top: 20, bottom: 20 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} horizontal={activeTab === 'prefecture'} />
                         {activeTab === 'prefecture' ? (
@@ -388,6 +396,7 @@ export default function SurveyTable() {
                               width={100} 
                               interval={0}
                               tick={{ fill: '#a1a1aa', fontWeight: 'bold' }}
+                              minTickGap={0}
                             />
                           </>
                         ) : (
@@ -400,7 +409,8 @@ export default function SurveyTable() {
                           dataKey="value" 
                           fill="#ef4444" 
                           radius={[0, 4, 4, 0]} 
-                          barSize={activeTab === 'prefecture' ? 18 : 15} 
+                          barSize={activeTab === 'prefecture' ? 18 : 15}
+                          isAnimationActive={false}
                         />
                         <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                       </BarChart>
