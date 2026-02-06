@@ -131,10 +131,10 @@ export default function SnsStats() {
           </div>
         </div>
 
-        <div className="h-[450px] w-full mb-6">
+        <div className="h-[500px] w-full mb-6">
           <ResponsiveContainer width="100%" height="100%">
-            {/* margin bottom を増やしてスペースを確保 */}
-            <ComposedChart data={platformData} margin={{ bottom: 60, top: 10 }}>
+            {/* margin bottom をさらに増やして(100)広大なスペースを確保 */}
+            <ComposedChart data={platformData} margin={{ bottom: 100, top: 10 }}>
               <CartesianGrid stroke="#18181b" vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="#52525b" fontSize={10} tickLine={false} axisLine={false} dy={5} />
               <YAxis yAxisId="left" stroke="#52525b" fontSize={9} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => v.toLocaleString()} />
@@ -170,7 +170,7 @@ export default function SnsStats() {
               <Bar yAxisId="right" dataKey="diff" name="Daily Growth" fill={color} opacity={0.3} radius={[4, 4, 0, 0]} barSize={20} />
               <Line yAxisId="left" type="monotone" dataKey="follower_count" name="Total Followers" stroke={color} strokeWidth={3} dot={{ r: 4, fill: color, strokeWidth: 0 }} />
 
-              {/* 【修正】イベントドットを日付(X軸)の下に配置 */}
+              {/* 【修正】イベントドットをさらに下（430）に配置 */}
               <Line
                 yAxisId="left"
                 dataKey="follower_count"
@@ -181,12 +181,13 @@ export default function SnsStats() {
                   const { cx, payload } = props;
                   if (!cx) return <React.Fragment key={Math.random()} />;
                   const dayEvents = events.filter(e => formatChartDate(formatDate(e.event_date)) === payload.date);
-                  // 座標を調整: グラフの底辺(日付ラベル)よりもさらに下に描画
-                  const dotBaseY = 380; 
+                  
+                  // ここを 430 に下げました
+                  const dotBaseY = 430; 
                   return (
                     <g key={`ev-group-${payload.date}-${title}`} style={{ overflow: 'visible' }}>
                       {dayEvents.map((ev, index) => {
-                        const currentY = dotBaseY + (index * 12);
+                        const currentY = dotBaseY + (index * 13);
                         let evColor = '#ef4444';
                         if (ev.category === 'RELEASE') evColor = '#eab308';
                         if (ev.category === 'TV') evColor = '#10b981';
