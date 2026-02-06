@@ -1,6 +1,5 @@
 "use client";
 import React, { useState, useEffect } from "react";
-// ↓ 共通設定ファイルをインポート
 import { supabase } from "../supabase"; 
 import Link from "next/link";
 
@@ -90,12 +89,10 @@ export default function CalendarPage() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const days = [];
 
-    // 空白の埋め合わせ
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-24 bg-zinc-900/10 border border-zinc-800/20"></div>);
     }
 
-    // 日付の描画
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const dayEvents = events.filter(e => e.event_date === dateStr);
@@ -128,16 +125,32 @@ export default function CalendarPage() {
   return (
     <main className="min-h-screen bg-black text-white p-6 md:p-12 font-sans">
       <div className="max-w-5xl mx-auto">
-        <header className="flex justify-between items-center mb-8 border-b border-zinc-800 pb-6">
+        {/* ヘッダーセクション：ご指定の順序にボタンを配置 */}
+        <header className="flex flex-col md:flex-row justify-between items-center mb-12 border-b border-zinc-800 pb-8 gap-6">
           <div>
             <h1 className="text-3xl font-black italic uppercase tracking-tighter">Event <span className="text-red-600">Scheduler</span></h1>
             <p className="text-zinc-500 text-[9px] mt-1 uppercase tracking-[0.3em]">Timeline & Promotion Management</p>
           </div>
-          <Link href="/" className="text-[10px] text-zinc-400 hover:text-white border border-zinc-800 px-6 py-2 rounded-full transition-all uppercase font-bold tracking-widest">← Return to Analytics</Link>
+          
+          <div className="flex flex-wrap justify-center gap-3">
+            {/* 1. YouTube動画アクセス解析 */}
+            <Link href="/" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">
+              YouTube動画アクセス解析
+            </Link>
+            
+            {/* 2. SNSアクセス解析 */}
+            <Link href="/sns" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">
+              SNSアクセス解析
+            </Link>
+            
+            {/* 3. ライブアンケート解析 */}
+            <Link href="/analysis" className="text-[10px] bg-white text-black px-6 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">
+              ライブアンケート解析 →
+            </Link>
+          </div>
         </header>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
           {/* フォームセクション */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800 shadow-2xl sticky top-8">
@@ -232,7 +245,6 @@ export default function CalendarPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </main>
