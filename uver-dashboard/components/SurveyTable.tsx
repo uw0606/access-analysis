@@ -237,23 +237,19 @@ export default function SurveyTable() {
           </div>
         </header>
 
-        {/* 【修正】ナビゲーション: 他の解析サイトと順序・デザインを完全に統一 */}
+        {/* 【修正】ナビゲーション: 指定の順序に変更 */}
         <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
-          <a href="/" 
-             className="px-5 py-2 bg-zinc-950 border border-zinc-800 rounded-full text-[9px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
-             YouTube動画アクセス解析
-          </a>
           <a href="/calendar" 
-             className="px-5 py-2 bg-zinc-950 border border-zinc-800 rounded-full text-[9px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
+             className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
              カレンダー
           </a>
-          <a href="/sns" 
-             className="px-5 py-2 bg-zinc-950 border border-zinc-800 rounded-full text-[9px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
-             SNSアクセス解析
+          <a href="/" 
+             className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
+             YouTube動画アクセス解析
           </a>
-          <a href="/analysis" 
-             className="px-5 py-2 bg-white border border-white rounded-full text-[9px] font-bold text-black hover:bg-red-600 hover:border-red-600 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
-             ライブアンケート解析 →
+          <a href="/sns" 
+             className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">
+             SNSアクセス解析
           </a>
         </div>
 
