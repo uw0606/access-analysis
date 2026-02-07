@@ -45,9 +45,7 @@ export default function SurveyTable() {
   const [selectedTypeForImport, setSelectedTypeForImport] = useState("");
   const [activeTab, setActiveTab] = useState('song');
   
-  // ドラッグ&ドロップ状態管理
   const [isDragging, setIsDragging] = useState(false);
-  
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
 
@@ -111,6 +109,18 @@ export default function SurveyTable() {
       alert("会場タイプを先に選択してください");
       return;
     }
+
+    // 上書き確認ロジックの追加
+    const targetDate = selectedLiveForImport.event_date;
+    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
+    
+    if (isAlreadyRegistered) {
+      const confirmOverwrite = window.confirm(
+        `【確認】\n${targetDate} の「${selectedLiveForImport.title}」は既に登録されています。\n既存のデータを削除して上書きしてもよろしいですか？`
+      );
+      if (!confirmOverwrite) return; // キャンセル時は何もしない
+    }
+
     setUploading(true);
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -122,7 +132,7 @@ export default function SurveyTable() {
         const worksheet = workbook.Sheets[sheetName];
         const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
         if (!rows || rows.length < 2) throw new Error("データが含まれていません。");
-        const targetDate = selectedLiveForImport.event_date; 
+        
         const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
@@ -138,9 +148,12 @@ export default function SurveyTable() {
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
+
+        // 既存データの削除を実行してから新規インサート
         await supabase.from("survey_responses").delete().eq("live_name", selectedLiveForImport.title).gte("created_at", `${targetDate}T00:00:00.000Z`).lte("created_at", `${targetDate}T23:59:59.999Z`);
         const { error } = await supabase.from("survey_responses").insert(formattedData);
         if (error) throw error;
+        
         alert(`完了しました！\n${targetDate} のデータを ${formattedData.length} 件登録しました。`);
         await fetchData();
         setView('analytics');
@@ -149,7 +162,6 @@ export default function SurveyTable() {
     reader.readAsBinaryString(file);
   };
 
-  // ドラッグ＆ドロップ用ハンドラー
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
