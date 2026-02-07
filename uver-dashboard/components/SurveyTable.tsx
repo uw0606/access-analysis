@@ -44,7 +44,6 @@ export default function SurveyTable() {
   const [selectedLiveForImport, setSelectedLiveForImport] = useState<any>(null);
   const [selectedTypeForImport, setSelectedTypeForImport] = useState("");
   const [activeTab, setActiveTab] = useState('song');
-  const [isDragActive, setIsDragActive] = useState(false);
   
   // iPhone対策：マウント状態と動的な幅の管理
   const [isReady, setIsReady] = useState(false);
@@ -65,11 +64,9 @@ export default function SurveyTable() {
     fetchData(); 
   }, [fetchData]);
 
-  // iPhone Safariのレンダリング遅延対策
   useEffect(() => {
     const updateSize = () => {
       const width = window.innerWidth;
-      // 画面端の余白（左右各16px〜32px）を引いた値をセット
       if (width < 768) {
         setChartWidth(width - 48); 
       } else {
@@ -79,10 +76,7 @@ export default function SurveyTable() {
     
     updateSize();
     window.addEventListener('resize', updateSize);
-    
-    // DOMが安定するまで少し待ってから表示
     const timer = setTimeout(() => setIsReady(true), 300);
-    
     return () => {
       window.removeEventListener('resize', updateSize);
       clearTimeout(timer);
@@ -291,6 +285,10 @@ export default function SurveyTable() {
             <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
+            {/* 追加されたセトリ制作ボタン */}
+            <a href="https://uw0606.github.io/setlist/" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
+              セットリスト制作
+            </a>
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
               {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
             </button>
