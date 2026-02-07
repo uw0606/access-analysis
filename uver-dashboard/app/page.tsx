@@ -15,7 +15,7 @@ type ChartPoint = {
   fullDate: string;
   totalGrowth: number;
   events: any[]; 
-  eventPos: number; // Scatter表示用のダミー位置
+  eventPos: number; 
   [key: string]: any; 
 };
 
@@ -254,10 +254,11 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px', paddingBottom: '20px' }} />
                 
-                {/* SNSページと同様のアニメーション付きドット。dot={false}を設定したLineと干渉しない */}
+                {/* 修正ポイント: 不要な白枠、重なりを完全に削除したScatter */}
                 <Scatter 
                   name="Events" 
                   dataKey="eventPos" 
+                  isAnimationActive={false} // デフォルトの出現アニメをオフにして独自アニメを優先
                   shape={(props: any) => {
                     const { cx, cy, payload } = props;
                     if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
@@ -267,15 +268,27 @@ export default function Home() {
                     return (
                       <g>
                         {payload.events.map((ev: any, idx: number) => {
-                          const offsetHeight = idx * 15;
-                          const targetY = baseBottomY + offsetHeight;
+                          const targetY = baseBottomY + (idx * 15);
                           const color = getEventColor(ev.category);
                           
                           return (
                             <g key={idx} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
-                              <circle cx={cx} cy={targetY} r={6} fill={color} opacity={0.15} className="animate-pulse" />
-                              <circle cx={cx} cy={targetY} r={3} fill={color} stroke="#fff" strokeWidth={0.5} />
-                              <text x={cx} y={targetY + 2} textAnchor="middle" fill="#fff" fontSize="5px" fontWeight="black" pointerEvents="none">
+                              {/* 1. 外側の波紋: 白枠なし、低透明度の単色 */}
+                              <circle 
+                                cx={cx} cy={targetY} r={7} 
+                                fill={color} 
+                                opacity={0.25} 
+                                stroke="none" 
+                                className="animate-pulse" 
+                              />
+                              {/* 2. 中心のドット: 白枠なし、しっかりした単色 */}
+                              <circle 
+                                cx={cx} cy={targetY} r={3.5} 
+                                fill={color} 
+                                stroke="none" 
+                              />
+                              {/* 3. 文字: 最小限の白 */}
+                              <text x={cx} y={targetY + 2} textAnchor="middle" fill="#fff" fontSize="5px" fontWeight="black" pointerEvents="none" style={{ userSelect: 'none' }}>
                                 {ev.category.slice(0,1)}
                               </text>
                             </g>
@@ -286,7 +299,7 @@ export default function Home() {
                   }} 
                 />
 
-                {/* dot={false} でライン上のドットを非表示にし、イベントドットと重ならないように修正 */}
+                {/* ライン上のドットも dot={false} で完全に排除 */}
                 {viewMode === "top5" && tableData.slice(0, 5).map((song, idx) => (
                   <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} />
                 ))}
