@@ -187,7 +187,9 @@ export default function SurveyTable() {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
         const protectedVal = rawVal.replace(/99\/100騙しの哲/g, "##99_100_TETSU##");
-        const splitSongs = protectedVal.split(/[/,、&／＆]+/);
+        
+        const splitSongs = protectedVal.split(/[/,、&／＆・]+/);
+        
         splitSongs.forEach(song => {
           let currentSong = song.replace(/##99_100_TETSU##/g, "99/100騙しの哲").replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!');
           let cleanSong = currentSong.trim();
