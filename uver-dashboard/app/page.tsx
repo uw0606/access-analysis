@@ -252,7 +252,7 @@ export default function Home() {
           <div className="h-[400px] md:h-[500px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
               {/* margin.bottom を増やしてイベント描画エリアを確保 */}
-              <ComposedChart data={chartData} margin={{ bottom: 50, top: 10, left: 0, right: 0 }}> 
+              <ComposedChart data={chartData} margin={{ bottom: 40, top: 10, left: 0, right: 0 }}> 
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
@@ -289,7 +289,7 @@ export default function Home() {
                     if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
                     
                     // 修正：y座標を固定値ではなく、コンテナの下端（cy）付近から計算
-                    const startY = cy + 10; 
+                    const startY = cy + 50; 
 
                     return (
                       <g>
