@@ -31,20 +31,22 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
-          # UTC時間を取得（15時台なら公式、16時台ならTAKUYA∞）
-          HOUR=$(date +%H)
-          if [ "$HOUR" == "15" ]; then
-            echo "--- Execution: Account 1 (Official) ---"
+          # スケジュール（cron）の文字列を直接判定
+          TRIGGER="${{ github.event.schedule }}"
+          
+          if [ "$TRIGGER" == "15 15 * * *" ]; then
+            echo "--- Execution: Account 1 (Official + YouTube) ---"
             python sns_to_supabase.py --target official
-            # YouTubeとスケジュール同期は0:15の回にまとめて実行
             python uver_to_supabase.py
             python sync_all_data.py
-          elif [ "$HOUR" == "16" ]; then
+          elif [ "$TRIGGER" == "15 16 * * *" ]; then
             echo "--- Execution: Account 2 (Takuya) ---"
             python sns_to_supabase.py --target takuya
           else
-            echo "--- Manual Execution: Running Both ---"
+            echo "--- Manual Execution: Running All ---"
+            # 手動実行時は確実に全データを更新
             python sns_to_supabase.py --target official
-            sleep 60
             python sns_to_supabase.py --target takuya
+            python uver_to_supabase.py
+            python sync_all_data.py
           fi

@@ -52,29 +52,41 @@ def get_x_followers(username):
             if count:
                 print(f"✅ X({username})成功: {count}人")
                 return count
+        print(f"⚠️ X({username})取得失敗: HTTP {response.status_code}")
     except Exception as e:
         print(f"⚠️ X取得エラー: {e}")
     return None
 
 def get_tiktok_followers(username):
-    """TikTokのフォロワー数を取得"""
+    """TikTokのフォロワー数を中継サイトから取得（直接取得が困難なため）"""
     try:
-        url = f"https://www.tiktok.com/@{username}"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        response = requests.get(url, headers=headers, timeout=15)
-        match = re.search(r'"followerCount":(\d+)', response.text)
-        if match:
-            count = int(match.group(1))
-            print(f"✅ TikTok({username})成功: {count}人")
-            return count
+        # TikTokは公式を直接叩くとボット検知されやすいため、中継サイトを利用
+        url = f"https://www.viewstats.com/tiktok/user/{username}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        response = requests.get(url, headers=headers, timeout=20)
+        
+        if response.status_code == 200:
+            # 数値と単位（M/K）を正規表現で抽出
+            match = re.search(r'([\d,.]+)([MKk]?)\s*Followers', response.text, re.IGNORECASE)
+            if match:
+                raw_val = match.group(1).replace(',', '')
+                suffix = match.group(2).upper()
+                count = float(raw_val)
+                if suffix == 'M': count *= 1000000
+                elif suffix == 'K': count *= 1000
+                print(f"✅ TikTok({username})成功: {int(count)}人")
+                return int(count)
+        print(f"⚠️ TikTok({username})取得失敗: HTTP {response.status_code}")
     except Exception as e:
-        print(f"⚠️ TikTok取得エラー: {e}")
+        print(f"⚠️ TikTok({username})取得エラー: {e}")
     return None
 
 def main():
     # 引数処理の設定
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=['official', 'takuya'], help='Target Instagram account')
+    parser.add_argument('--target', choices=['official', 'takuya'], help='Target account mode')
     args = parser.parse_args()
 
     print(f"--- 🚀 SNSデータ同期開始 [Target: {args.target if args.target else 'ALL'}] ---")
@@ -85,7 +97,7 @@ def main():
         
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    # 1. YouTube取得 (引数なし、またはofficialの時のみ実行)
+    # 1. YouTube取得 (officialの時のみ、またはALLの時)
     if args.target in [None, 'official']:
         try:
             yt_url = "https://www.googleapis.com/youtube/v3/channels"
@@ -97,17 +109,19 @@ def main():
                 supabase.table("sns_stats").insert({"platform": "youtube", "follower_count": yt_count}).execute()
         except Exception as e: print(f"❌ YouTubeエラー: {e}")
 
-    # 2. X / TikTok取得 (officialの時のみ、またはALLの時のみ実行)
+    # 2. X / TikTok取得 (officialの時のみ、またはALLの時)
     if args.target in [None, 'official']:
+        # X 取得
         x_count = get_x_followers(X_USERNAME)
         if x_count:
             supabase.table("sns_stats").insert({"platform": "x_official", "follower_count": x_count}).execute()
         
+        # TikTok 取得
         tk_count = get_tiktok_followers(TIKTOK_USERNAME)
         if tk_count:
             supabase.table("sns_stats").insert({"platform": "tiktok_takuya", "follower_count": tk_count}).execute()
 
-    # 3. Instagram取得 (時間差運用のメイン)
+    # 3. Instagram取得
     insta_targets = []
     if args.target == 'official':
         insta_targets = [("uverworld_official", "instagram_official")]
