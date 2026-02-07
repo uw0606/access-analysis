@@ -45,7 +45,9 @@ export default function SurveyTable() {
   const [selectedTypeForImport, setSelectedTypeForImport] = useState("");
   const [activeTab, setActiveTab] = useState('song');
   
-  // iPhone対策：マウント状態と動的な幅の管理
+  // ドラッグ&ドロップ状態管理
+  const [isDragging, setIsDragging] = useState(false);
+  
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
 
@@ -147,6 +149,25 @@ export default function SurveyTable() {
     reader.readAsBinaryString(file);
   };
 
+  // ドラッグ＆ドロップ用ハンドラー
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFile(files[0]);
+    }
+  };
+
   const filteredData = useMemo(() => {
     return tableData.filter(d => {
       const datePart = d.created_at ? d.created_at.split('T')[0] : "";
@@ -187,9 +208,7 @@ export default function SurveyTable() {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
         const protectedVal = rawVal.replace(/99\/100騙しの哲/g, "##99_100_TETSU##");
-        
         const splitSongs = protectedVal.split(/[/,、&／＆・]+/);
-        
         splitSongs.forEach(song => {
           let currentSong = song.replace(/##99_100_TETSU##/g, "99/100騙しの哲").replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!');
           let cleanSong = currentSong.trim();
@@ -287,7 +306,6 @@ export default function SurveyTable() {
             <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
-            {/* 追加されたセトリ制作ボタン */}
             <a href="https://uw0606.github.io/setlist/" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
               セットリスト制作
             </a>
@@ -333,10 +351,22 @@ export default function SurveyTable() {
                     ))}
                   </div>
                   {selectedTypeForImport && (
-                    <div className="relative pt-12 pb-12 border-2 border-dashed border-zinc-700 bg-zinc-950/50 rounded-3xl flex flex-col items-center justify-center gap-4">
-                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : "Browse File"}</p>
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${
+                        isDragging 
+                          ? 'border-red-500 bg-red-500/10 scale-[1.02]' 
+                          : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'
+                      }`}
+                    >
+                      <p className="text-white font-black uppercase text-[12px]">
+                        {uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}
+                      </p>
                       <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
                       <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
+                      <p className="text-zinc-600 text-[8px] font-mono mt-2 uppercase tracking-widest">Supports .csv, .xlsx</p>
                     </div>
                   )}
                 </div>
