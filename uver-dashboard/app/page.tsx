@@ -127,12 +127,10 @@ export default function Home() {
 
         const songsArray = Object.values(songsMap);
 
-        // --- 修正ポイント：ランキング計算ロジックの追加 ---
         uniqueDates.forEach((date, idx) => {
           const prevDate = uniqueDates[idx - 1];
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
 
-          // 1. 各曲の増加数をセット
           songsArray.forEach((s: any) => {
             const currentViews = s.history[date] || 0;
             const prevViews = prevDate ? s.history[prevDate] : null;
@@ -148,7 +146,6 @@ export default function Home() {
             }
           });
 
-          // 2. この日の増加数ランキングを計算
           const dayRanking = [...songsArray]
             .filter((s: any) => s.history[`${date}_inc`] !== undefined)
             .sort((a: any, b: any) => b.history[`${date}_inc`] - a.history[`${date}_inc`]);
@@ -157,7 +154,6 @@ export default function Home() {
             const currentRank = rIdx + 1;
             s.history[`${date}_g_rank`] = currentRank;
 
-            // 前日のランクと比較して矢印を決める
             if (prevDate) {
               const prevRank = s.history[`${prevDate}_g_rank`];
               if (!prevRank) {
@@ -174,7 +170,6 @@ export default function Home() {
             }
           });
         });
-        // --- ここまで ---
 
         const lastDate = uniqueDates[uniqueDates.length - 1];
         const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
@@ -256,7 +251,8 @@ export default function Home() {
 
           <div className="h-[400px] md:h-[500px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ bottom: 60, top: 10 }}> 
+              {/* margin.bottom を増やしてイベント描画エリアを確保 */}
+              <ComposedChart data={chartData} margin={{ bottom: 80, top: 10, left: 0, right: 0 }}> 
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
@@ -292,12 +288,14 @@ export default function Home() {
                     const { cx, cy, payload } = props;
                     if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
                     
-                    const baseBottomY = 450; 
+                    // 修正：y座標を固定値ではなく、コンテナの下端（cy）付近から計算
+                    const startY = cy + 10; 
 
                     return (
                       <g>
                         {payload.events.map((ev: any, idx: number) => {
-                          const targetY = baseBottomY + (idx * 15);
+                          // イベントが重なる場合は下方向にずらして配置
+                          const targetY = startY + (idx * 15);
                           const color = getEventColor(ev.category);
                           
                           return (
