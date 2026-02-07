@@ -126,10 +126,13 @@ export default function Home() {
         });
 
         const songsArray = Object.values(songsMap);
+
+        // --- 修正ポイント：ランキング計算ロジックの追加 ---
         uniqueDates.forEach((date, idx) => {
           const prevDate = uniqueDates[idx - 1];
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
 
+          // 1. 各曲の増加数をセット
           songsArray.forEach((s: any) => {
             const currentViews = s.history[date] || 0;
             const prevViews = prevDate ? s.history[prevDate] : null;
@@ -144,7 +147,34 @@ export default function Home() {
               tempChartData[chartIdx].totalGrowth += inc;
             }
           });
+
+          // 2. この日の増加数ランキングを計算
+          const dayRanking = [...songsArray]
+            .filter((s: any) => s.history[`${date}_inc`] !== undefined)
+            .sort((a: any, b: any) => b.history[`${date}_inc`] - a.history[`${date}_inc`]);
+
+          dayRanking.forEach((s: any, rIdx) => {
+            const currentRank = rIdx + 1;
+            s.history[`${date}_g_rank`] = currentRank;
+
+            // 前日のランクと比較して矢印を決める
+            if (prevDate) {
+              const prevRank = s.history[`${prevDate}_g_rank`];
+              if (!prevRank) {
+                s.history[`${date}_diff`] = "new";
+              } else if (currentRank < prevRank) {
+                s.history[`${date}_diff`] = "up";
+              } else if (currentRank > prevRank) {
+                s.history[`${date}_diff`] = "down";
+              } else {
+                s.history[`${date}_diff`] = "keep";
+              }
+            } else {
+              s.history[`${date}_diff`] = "new";
+            }
+          });
         });
+        // --- ここまで ---
 
         const lastDate = uniqueDates[uniqueDates.length - 1];
         const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
@@ -254,11 +284,10 @@ export default function Home() {
                 />
                 <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ fontSize: '8px', paddingBottom: '20px' }} />
                 
-                {/* 修正ポイント: 不要な白枠、重なりを完全に削除したScatter */}
                 <Scatter 
                   name="Events" 
                   dataKey="eventPos" 
-                  isAnimationActive={false} // デフォルトの出現アニメをオフにして独自アニメを優先
+                  isAnimationActive={false}
                   shape={(props: any) => {
                     const { cx, cy, payload } = props;
                     if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
@@ -273,21 +302,8 @@ export default function Home() {
                           
                           return (
                             <g key={idx} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
-                              {/* 1. 外側の波紋: 白枠なし、低透明度の単色 */}
-                              <circle 
-                                cx={cx} cy={targetY} r={7} 
-                                fill={color} 
-                                opacity={0.25} 
-                                stroke="none" 
-                                className="animate-pulse" 
-                              />
-                              {/* 2. 中心のドット: 白枠なし、しっかりした単色 */}
-                              <circle 
-                                cx={cx} cy={targetY} r={3.5} 
-                                fill={color} 
-                                stroke="none" 
-                              />
-                              {/* 3. 文字: 最小限の白 */}
+                              <circle cx={cx} cy={targetY} r={7} fill={color} opacity={0.25} stroke="none" className="animate-pulse" />
+                              <circle cx={cx} cy={targetY} r={3.5} fill={color} stroke="none" />
                               <text x={cx} y={targetY + 2} textAnchor="middle" fill="#fff" fontSize="5px" fontWeight="black" pointerEvents="none" style={{ userSelect: 'none' }}>
                                 {ev.category.slice(0,1)}
                               </text>
@@ -299,7 +315,6 @@ export default function Home() {
                   }} 
                 />
 
-                {/* ライン上のドットも dot={false} で完全に排除 */}
                 {viewMode === "top5" && tableData.slice(0, 5).map((song, idx) => (
                   <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} />
                 ))}
@@ -310,7 +325,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブルセクション */}
         <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
