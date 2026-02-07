@@ -300,6 +300,7 @@ export default function SurveyTable() {
         <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
           <a href="/calendar" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">カレンダー</a>
           <a href="/" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">YouTube動画解析</a>
+          <a href="/sns" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">SNS解析</a>
         </div>
 
         {view === 'import' ? (
@@ -348,9 +349,9 @@ export default function SurveyTable() {
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
                 <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
-                  <option value="2024">2024</option>
-                  <option value="2025">2025</option>
                   <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                  <option value="2028">2028</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
