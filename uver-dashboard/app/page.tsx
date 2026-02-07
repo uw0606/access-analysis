@@ -263,7 +263,7 @@ export default function Home() {
                     const { cx, cy, payload } = props;
                     if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
                     
-                    const baseBottomY = 320; 
+                    const baseBottomY = 450; 
 
                     return (
                       <g>
