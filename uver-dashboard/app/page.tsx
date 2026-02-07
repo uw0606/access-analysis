@@ -252,7 +252,7 @@ export default function Home() {
           <div className="h-[400px] md:h-[500px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
               {/* margin.bottom を増やしてイベント描画エリアを確保 */}
-              <ComposedChart data={chartData} margin={{ bottom: 80, top: 10, left: 0, right: 0 }}> 
+              <ComposedChart data={chartData} margin={{ bottom: 50, top: 10, left: 0, right: 0 }}> 
                 <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
