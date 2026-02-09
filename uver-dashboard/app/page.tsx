@@ -3,7 +3,7 @@
 // クライアントコンポーネントで動的レンダリングを強制する設定
 export const dynamic = "force-dynamic";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react"; // useRefを追加
 import { supabase } from "./supabase"; 
 import { 
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
@@ -34,7 +34,6 @@ const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "---";
-  // 日本時間に変換
   const jstDate = new Date(d.getTime() + (9 * 60 * 60 * 1000));
   const y = jstDate.getUTCFullYear();
   const m = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
@@ -68,6 +67,9 @@ export default function Home() {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
+  // ★追加: テーブルコンテナへの参照
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     handleResize();
@@ -75,14 +77,23 @@ export default function Home() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ★追加: データ読み込み完了時に右端へスクロールする処理
+  useEffect(() => {
+    if (!loading && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      // scrollWidth(全体の幅)をscrollLeftに代入することで右端に移動
+      container.scrollLeft = container.scrollWidth;
+    }
+  }, [loading, tableData]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
-      // ★修正ポイント1: .order('created_at', { ascending: false }) で最新順に取得
+      // ロジック維持のため ascending: true (古い順) のまま取得
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
-        .order('created_at', { ascending: false }) 
+        .order('created_at', { ascending: true })
         .limit(4000); 
 
       const { data: eventData } = await supabase.from("calendar_events").select("*");
@@ -97,13 +108,8 @@ export default function Home() {
           const d = formatDate(s.created_at);
           if (d !== "---") dateSet.add(d);
         });
-        
-        // ★修正ポイント2: 日付リストを降順（新しい順）でソート
-        const uniqueDates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
+        const uniqueDates = Array.from(dateSet).sort();
         setDates(uniqueDates);
-
-        // チャート用には昇順（過去から未来）のデータが必要なため別で作る
-        const chronologicalDates = [...uniqueDates].sort();
 
         const songsMap: { [key: string]: any } = {};
         stats.forEach(s => {
@@ -121,8 +127,7 @@ export default function Home() {
           songsMap[s.title].history[dateStr] = Number(s.views);
         });
 
-        // チャートデータの作成（ここは時系列順）
-        const tempChartData: ChartPoint[] = chronologicalDates.map(date => {
+        const tempChartData: ChartPoint[] = uniqueDates.map(date => {
           const dayEvents = evs.filter(e => e.event_date.replace(/-/g, '/') === date);
           return {
             name: formatChartDate(date),
@@ -135,9 +140,8 @@ export default function Home() {
 
         const songsArray = Object.values(songsMap);
 
-        // 前日比計算などのロジック（時系列で行う必要がある）
-        chronologicalDates.forEach((date, idx) => {
-          const prevDate = chronologicalDates[idx - 1];
+        uniqueDates.forEach((date, idx) => {
+          const prevDate = uniqueDates[idx - 1];
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
 
           songsArray.forEach((s: any) => {
@@ -155,7 +159,6 @@ export default function Home() {
             }
           });
 
-          // ランキング計算
           const dayRanking = [...songsArray]
             .filter((s: any) => s.history[`${date}_inc`] !== undefined)
             .sort((a: any, b: any) => b.history[`${date}_inc`] - a.history[`${date}_inc`]);
@@ -181,10 +184,9 @@ export default function Home() {
           });
         });
 
-        // ★修正ポイント3: 最新日の増加数でソート
-        const lastDate = chronologicalDates[chronologicalDates.length - 1];
+        const lastDate = uniqueDates[uniqueDates.length - 1];
         const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
-          (b.history[lastDate] || 0) - (a.history[lastDate] || 0)
+          (b.history[`${lastDate}_inc`] || 0) - (a.history[`${lastDate}_inc`] || 0)
         );
         
         setTableData(sortedResult);
@@ -211,7 +213,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-black text-white p-2 md:p-12 font-sans text-[10px] relative">
-      {/* モーダル部分 (省略なし) */}
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
@@ -242,7 +243,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* チャート部分 */}
         <div className="mb-8 bg-zinc-900/40 p-4 md:p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -330,8 +330,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* テーブル部分：ここが「最新の日付」から横に並ぶようになります */}
-        <div className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
+        {/* ★修正: refを追加 */}
+        <div 
+          ref={scrollContainerRef}
+          className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl"
+        >
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
               <tr className="bg-zinc-950 text-zinc-500 uppercase font-bold">
