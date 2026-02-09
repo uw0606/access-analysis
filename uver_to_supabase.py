@@ -92,6 +92,7 @@ SONG_LIST = {
     'ccXoPztZbrw': "『MMH』(Official Music Video)",
     'bYcYko_g97k': "『Bye-Bye to you』(Official Music Video)", 
     'prjI8z56xQQ': "『NO MAP』(Official Music Video)",
+    'Ln5aFWmUE3k': "UVERworld『EVER』(Lyric Video)",
 }
 
 def fetch_and_save():
