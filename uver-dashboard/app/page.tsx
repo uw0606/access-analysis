@@ -3,7 +3,7 @@
 // クライアントコンポーネントで動的レンダリングを強制する設定
 export const dynamic = "force-dynamic";
 
-import React, { useEffect, useState, useRef } from "react"; // useRefを追加
+import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "./supabase"; 
 import { 
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
@@ -67,7 +67,6 @@ export default function Home() {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
-  // ★追加: テーブルコンテナへの参照
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,11 +76,9 @@ export default function Home() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ★追加: データ読み込み完了時に右端へスクロールする処理
   useEffect(() => {
     if (!loading && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
-      // scrollWidth(全体の幅)をscrollLeftに代入することで右端に移動
       container.scrollLeft = container.scrollWidth;
     }
   }, [loading, tableData]);
@@ -89,12 +86,12 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // ロジック維持のため ascending: true (古い順) のまま取得
+      // ★修正: データ欠落を防ぐため、limitを4000から10000に引き上げ
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
         .order('created_at', { ascending: true })
-        .limit(4000); 
+        .limit(10000); 
 
       const { data: eventData } = await supabase.from("calendar_events").select("*");
       const evs = eventData || [];
@@ -330,7 +327,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ★修正: refを追加 */}
         <div 
           ref={scrollContainerRef}
           className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl"
