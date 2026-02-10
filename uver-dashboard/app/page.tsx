@@ -2,6 +2,7 @@
 
 // クライアントコンポーネントで動的レンダリングを強制する設定
 export const dynamic = "force-dynamic";
+export const revalidate = 0; // キャッシュを完全に無効化
 
 import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "./supabase"; 
@@ -86,11 +87,11 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // ★修正: データ欠落を防ぐため、limitを4000から10000に引き上げ
+      // 最新のデータを確実に含むため、降順（新しい順）で10000件取得
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false }) 
         .limit(10000); 
 
       const { data: eventData } = await supabase.from("calendar_events").select("*");
@@ -100,18 +101,17 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
-        const dateSet = new Set<string>();
-        stats.forEach(s => {
-          const d = formatDate(s.created_at);
-          if (d !== "---") dateSet.add(d);
-        });
-        const uniqueDates = Array.from(dateSet).sort();
-        setDates(uniqueDates);
+        // 計算ロジックは「古い順」を前提としているため、配列を反転させる
+        const sortedStats = [...stats].reverse();
 
+        const dateSet = new Set<string>();
         const songsMap: { [key: string]: any } = {};
-        stats.forEach(s => {
-          const dateStr = formatDate(s.created_at);
-          if (dateStr === "---") return;
+
+        sortedStats.forEach(s => {
+          const d = formatDate(s.created_at);
+          if (d === "---") return;
+          dateSet.add(d);
+
           if (!songsMap[s.title]) {
             songsMap[s.title] = {
               artist: "UVERworld",
@@ -121,8 +121,11 @@ export default function Home() {
               history: {} 
             };
           }
-          songsMap[s.title].history[dateStr] = Number(s.views);
+          songsMap[s.title].history[d] = Number(s.views);
         });
+
+        const uniqueDates = Array.from(dateSet).sort();
+        setDates(uniqueDates);
 
         const tempChartData: ChartPoint[] = uniqueDates.map(date => {
           const dayEvents = evs.filter(e => e.event_date.replace(/-/g, '/') === date);
@@ -142,7 +145,7 @@ export default function Home() {
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
 
           songsArray.forEach((s: any) => {
-            const currentViews = s.history[date] || 0;
+            const currentViews = s.history[date] || (prevDate ? s.history[prevDate] : 0);
             const prevViews = prevDate ? s.history[prevDate] : null;
             let inc = 0;
             if (prevViews !== null && currentViews > 0) {
@@ -157,8 +160,7 @@ export default function Home() {
           });
 
           const dayRanking = [...songsArray]
-            .filter((s: any) => s.history[`${date}_inc`] !== undefined)
-            .sort((a: any, b: any) => b.history[`${date}_inc`] - a.history[`${date}_inc`]);
+            .sort((a: any, b: any) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
 
           dayRanking.forEach((s: any, rIdx) => {
             const currentRank = rIdx + 1;
@@ -182,9 +184,12 @@ export default function Home() {
         });
 
         const lastDate = uniqueDates[uniqueDates.length - 1];
-        const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
-          (b.history[`${lastDate}_inc`] || 0) - (a.history[`${lastDate}_inc`] || 0)
-        );
+        const sortedResult = songsArray.sort((a: any, b: any) => {
+          const incA = a.history[`${lastDate}_inc`] || 0;
+          const incB = b.history[`${lastDate}_inc`] || 0;
+          if (incB !== incA) return incB - incA;
+          return a.title.localeCompare(b.title);
+        });
         
         setTableData(sortedResult);
         setChartData(tempChartData);
@@ -220,7 +225,7 @@ export default function Home() {
             </div>
             <p className="text-zinc-500 font-mono text-[9px] mb-1">{selectedEvent.event_date}</p>
             <h2 className="text-xl font-black italic uppercase leading-tight mb-4 tracking-tighter">{selectedEvent.title}</h2>
-            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 text-[11px] leading-relaxed whitespace-pre-wrap">
+            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 text-[11px] font-medium leading-relaxed whitespace-pre-wrap">
               {selectedEvent.description || "詳細情報はありません。"}
             </div>
           </div>
