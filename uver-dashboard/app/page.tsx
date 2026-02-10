@@ -218,7 +218,7 @@ export default function Home() {
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-sm rounded-3xl p-8 shadow-2xl">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
             <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white`} style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
               {selectedEvent.category}
