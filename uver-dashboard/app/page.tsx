@@ -87,6 +87,7 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // 最新のデータを確実に含むため、降順（新しい順）で10000件取得
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
@@ -100,6 +101,7 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
+        // 計算ロジックは古い順を前提とするため反転
         const sortedStats = [...stats].reverse();
         const dateSet = new Set<string>();
         const songsMap: { [key: string]: any } = {};
@@ -242,6 +244,7 @@ export default function Home() {
           </div>
         </header>
 
+        {/* チャートセクション */}
         <div className="mb-8 bg-zinc-900/40 p-4 md:p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -326,6 +329,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* テーブルセクション */}
         <div ref={scrollContainerRef} className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
