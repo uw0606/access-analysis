@@ -101,9 +101,8 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
-        // 計算ロジックは「古い順」を前提としているため、配列を反転させる
+        // 計算ロジックは古い順を前提とするため反転
         const sortedStats = [...stats].reverse();
-
         const dateSet = new Set<string>();
         const songsMap: { [key: string]: any } = {};
 
@@ -245,6 +244,7 @@ export default function Home() {
           </div>
         </header>
 
+        {/* チャートセクション */}
         <div className="mb-8 bg-zinc-900/40 p-4 md:p-6 rounded-2xl border border-zinc-800 shadow-2xl relative">
           <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
@@ -300,7 +300,7 @@ export default function Home() {
                   isAnimationActive={false}
                   shape={(props: any) => {
                     const { cx, cy, payload } = props;
-                    if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
+                    if (!payload.events || payload.events.length === 0) return null;
                     const startY = cy + 30; 
                     return (
                       <g>
@@ -311,9 +311,6 @@ export default function Home() {
                             <g key={idx} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
                               <circle cx={cx} cy={targetY} r={7} fill={color} opacity={0.25} stroke="none" className="animate-pulse" />
                               <circle cx={cx} cy={targetY} r={3.5} fill={color} stroke="none" />
-                              <text x={cx} y={targetY + 2} textAnchor="middle" fill="#fff" fontSize="5px" fontWeight="black" pointerEvents="none" style={{ userSelect: 'none' }}>
-                                {ev.category.slice(0,1)}
-                              </text>
                             </g>
                           );
                         })}
@@ -332,10 +329,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div 
-          ref={scrollContainerRef}
-          className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl"
-        >
+        {/* テーブルセクション */}
+        <div ref={scrollContainerRef} className="overflow-x-auto bg-zinc-950 rounded-2xl border border-zinc-800 shadow-2xl">
           <table className="w-full text-left min-w-max border-separate border-spacing-0 text-[7px] md:text-[9px]">
             <thead>
               <tr className="bg-zinc-950 text-zinc-500 uppercase font-bold">
@@ -354,9 +349,7 @@ export default function Home() {
                 const isNew = isNewRelease(song.publishedAt);
                 return (
                   <tr key={song.title} className={`border-b border-zinc-800/40 hover:bg-white/5 transition-colors group ${isNew ? 'bg-red-900/10' : ''}`}>
-                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate">
-                      {song.artist.slice(0,4)}
-                    </td>
+                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate">{song.artist.slice(0,4)}</td>
                     <td className="p-2 sticky left-[40px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[85px] md:w-[200px]">
                       <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 truncate block">
                         <span className="truncate">{song.title}</span>
@@ -370,9 +363,7 @@ export default function Home() {
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
                           {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
                         </td>
-                        <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">
-                          {song.history[`${date}_v_rank`] || "-"}
-                        </td>
+                        <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">{song.history[`${date}_v_rank`] || "-"}</td>
                         <td className="p-1.5 border-r border-zinc-800 text-center font-black text-white">
                           <div className="flex items-center justify-center gap-0.5">
                             <RankIcon status={song.history[`${date}_diff`]} />
