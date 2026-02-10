@@ -87,7 +87,7 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 最新のデータを確実に含むため、降順（新しい順）で10000件取得
+      // ★修正: 最新のデータを確実に含むため、降順（新しい順）で10000件取得
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
@@ -101,7 +101,7 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
-        // 計算ロジックは「古い順」を前提としているため、配列を反転させる
+        // ★重要: 計算ロジックは「古い順」を前提としているため、配列を反転させる
         const sortedStats = [...stats].reverse();
 
         const dateSet = new Set<string>();
