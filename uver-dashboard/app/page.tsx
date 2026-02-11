@@ -4,6 +4,7 @@
 export const dynamic = "force-dynamic";
 
 import React, { useEffect, useState, useRef } from "react";
+// 必要に応じてパスを調整してください (例: "@/utils/supabase" など)
 import { supabase } from "./supabase"; 
 import { 
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
@@ -34,6 +35,7 @@ const formatDate = (dateStr: string) => {
   if (!dateStr) return "---";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "---";
+  // JSTへの変換（サーバー環境とブラウザ環境の差異を吸収）
   const jstDate = new Date(d.getTime() + (9 * 60 * 60 * 1000));
   const y = jstDate.getUTCFullYear();
   const m = String(jstDate.getUTCMonth() + 1).padStart(2, '0');
@@ -60,6 +62,7 @@ export default function Home() {
   const [tableData, setTableData] = useState<any[]>([]);
   const [dates, setDates] = useState<string[]>([]);
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [events, setEvents] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"top5" | "total" | "single">("top5");
@@ -86,11 +89,12 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // ★修正: データ欠落を防ぐため、limitを4000から10000に引き上げ
+      // 最新の10000件を取得するために order は descending: false (昇順) で limit をかける
+      // もし「最新のデータから1万件」欲しい場合は descending: true にして JS側で reverse する
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false }) 
         .limit(10000); 
 
       const { data: eventData } = await supabase.from("calendar_events").select("*");
@@ -100,8 +104,11 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
+        // 最新から取ったので、時系列計算のために逆転させる
+        const chronStats = [...stats].reverse();
+
         const dateSet = new Set<string>();
-        stats.forEach(s => {
+        chronStats.forEach(s => {
           const d = formatDate(s.created_at);
           if (d !== "---") dateSet.add(d);
         });
@@ -109,7 +116,7 @@ export default function Home() {
         setDates(uniqueDates);
 
         const songsMap: { [key: string]: any } = {};
-        stats.forEach(s => {
+        chronStats.forEach(s => {
           const dateStr = formatDate(s.created_at);
           if (dateStr === "---") return;
           if (!songsMap[s.title]) {
@@ -142,7 +149,7 @@ export default function Home() {
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
 
           songsArray.forEach((s: any) => {
-            const currentViews = s.history[date] || 0;
+            const currentViews = s.history[date] || (prevDate ? s.history[prevDate] : 0);
             const prevViews = prevDate ? s.history[prevDate] : null;
             let inc = 0;
             if (prevViews !== null && currentViews > 0) {
@@ -157,8 +164,7 @@ export default function Home() {
           });
 
           const dayRanking = [...songsArray]
-            .filter((s: any) => s.history[`${date}_inc`] !== undefined)
-            .sort((a: any, b: any) => b.history[`${date}_inc`] - a.history[`${date}_inc`]);
+            .sort((a: any, b: any) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
 
           dayRanking.forEach((s: any, rIdx) => {
             const currentRank = rIdx + 1;
@@ -182,7 +188,7 @@ export default function Home() {
         });
 
         const lastDate = uniqueDates[uniqueDates.length - 1];
-        const sortedResult = Object.values(songsMap).sort((a: any, b: any) => 
+        const sortedResult = songsArray.sort((a: any, b: any) => 
           (b.history[`${lastDate}_inc`] || 0) - (a.history[`${lastDate}_inc`] || 0)
         );
         
@@ -213,9 +219,9 @@ export default function Home() {
       {selectedEvent && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
-          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+          <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl text-white">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
-            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white`} style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
+            <div className="inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white" style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
               {selectedEvent.category}
             </div>
             <p className="text-zinc-500 font-mono text-[9px] mb-1">{selectedEvent.event_date}</p>
@@ -267,10 +273,11 @@ export default function Home() {
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                 <Tooltip 
                   content={({ active, payload, label }) => {
-                    if (!active || !payload) return null;
-                    const dayEvents = payload[0]?.payload?.events || [];
+                    if (!active || !payload || !payload.length) return null;
+                    const data = payload[0].payload;
+                    const dayEvents = data.events || [];
                     return (
-                      <div className="bg-black/90 border border-zinc-800 p-2 rounded-lg text-[9px] shadow-2xl backdrop-blur-md">
+                      <div className="bg-black/90 border border-zinc-800 p-2 rounded-lg text-[9px] shadow-2xl backdrop-blur-md text-white">
                         <p className="text-zinc-500 mb-2 font-mono border-b border-zinc-800 pb-1">{label}</p>
                         {dayEvents.map((ev: any, i: number) => (
                           <div key={i} className="mb-2 p-1.5 bg-zinc-800/50 rounded border-l-2" style={{ borderColor: getEventColor(ev.category) }}>
@@ -280,7 +287,7 @@ export default function Home() {
                         {payload.filter(p => p.name !== "Events").map((p: any) => (
                           <div key={p.name} className="flex justify-between gap-4">
                             <span style={{ color: p.color }} className="font-bold">{p.name}</span>
-                            <span className="font-mono text-zinc-300">+{p.value.toLocaleString()}</span>
+                            <span className="font-mono text-zinc-300">+{p.value?.toLocaleString()}</span>
                           </div>
                         ))}
                       </div>
@@ -295,15 +302,15 @@ export default function Home() {
                   isAnimationActive={false}
                   shape={(props: any) => {
                     const { cx, cy, payload } = props;
-                    if (!payload.events || payload.events.length === 0) return <rect width={0} height={0} />;
+                    if (!payload || !payload.events || payload.events.length === 0) return <rect key={cx} width={0} height={0} />;
                     const startY = cy + 30; 
                     return (
-                      <g>
+                      <g key={`event-group-${cx}`}>
                         {payload.events.map((ev: any, idx: number) => {
                           const targetY = startY + (idx * 15);
                           const color = getEventColor(ev.category);
                           return (
-                            <g key={idx} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
+                            <g key={`ev-${idx}`} onClick={() => setSelectedEvent(ev)} style={{ cursor: 'pointer' }}>
                               <circle cx={cx} cy={targetY} r={7} fill={color} opacity={0.25} stroke="none" className="animate-pulse" />
                               <circle cx={cx} cy={targetY} r={3.5} fill={color} stroke="none" />
                               <text x={cx} y={targetY + 2} textAnchor="middle" fill="#fff" fontSize="5px" fontWeight="black" pointerEvents="none" style={{ userSelect: 'none' }}>
@@ -353,9 +360,9 @@ export default function Home() {
                       {song.artist.slice(0,4)}
                     </td>
                     <td className="p-2 sticky left-[40px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[85px] md:w-[200px]">
-                      <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 truncate block">
+                      <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 truncate block hover:text-red-500 transition-colors">
                         <span className="truncate">{song.title}</span>
-                        {isNew && <span className="text-[5px] bg-red-600 text-white px-0.5 rounded-full flex-shrink-0 animate-pulse">N</span>}
+                        {isNew && <span className="text-[5px] bg-red-600 text-white px-0.5 rounded-full flex-shrink-0 animate-pulse ml-1">N</span>}
                       </a>
                     </td>
                     <td className="p-2 border-r border-zinc-800 text-zinc-600 font-mono text-center hidden md:table-cell italic">{song.publishedAt}</td>
