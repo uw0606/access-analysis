@@ -7,14 +7,14 @@ import React, { useEffect, useState, useRef } from "react";
 // 必要に応じてパスを調整してください (例: "@/utils/supabase" など)
 import { supabase } from "./supabase"; 
 import { 
-  ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Scatter
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
 } from 'recharts';
 
 // チャートデータの型定義
 type ChartPoint = {
   name: string;
   fullDate: string;
-  totalGrowth: number;
+  totalGrowth: number | null;
   events: any[]; 
   eventPos: number; 
   [key: string]: any; 
@@ -146,17 +146,23 @@ export default function Home() {
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
 
           songsArray.forEach((s: any) => {
-            const currentViews = s.history[date] || (prevDate ? s.history[prevDate] : 0);
+            const currentViews = s.history[date];
             const prevViews = prevDate ? s.history[prevDate] : null;
-            let inc = 0;
-            if (prevViews !== null && currentViews > 0) {
+            
+            let inc: number | null = null;
+            // 当日と前日の両方のデータが存在する場合のみ増加量を計算
+            if (currentViews !== undefined && prevViews !== null && prevViews !== undefined) {
               inc = currentViews - prevViews;
               if (inc < 0) inc = 0; 
             }
+            
             s.history[`${date}_inc`] = inc;
             if (chartIdx !== -1) {
-              tempChartData[chartIdx][s.title] = inc;
-              tempChartData[chartIdx].totalGrowth += inc;
+              // inc が null の場合は undefined にして Recharts の描画をスキップさせる
+              tempChartData[chartIdx][s.title] = inc === null ? undefined : inc;
+              if (inc !== null) {
+                tempChartData[chartIdx].totalGrowth = (tempChartData[chartIdx].totalGrowth || 0) + inc;
+              }
             }
           });
 
@@ -265,7 +271,7 @@ export default function Home() {
           <div className="h-[400px] md:h-[500px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ bottom: 30, top: 10, left: 0, right: 0 }}> 
-                {/* CartesianGrid（横棒）を削除しました */}
+                <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                 <Tooltip 
@@ -284,7 +290,7 @@ export default function Home() {
                         {payload.filter(p => p.name !== "Events").map((p: any) => (
                           <div key={p.name} className="flex justify-between gap-4">
                             <span style={{ color: p.color }} className="font-bold">{p.name}</span>
-                            <span className="font-mono text-zinc-300">+{p.value?.toLocaleString()}</span>
+                            <span className="font-mono text-zinc-300">{p.value !== undefined ? `+${p.value.toLocaleString()}` : "No Data"}</span>
                           </div>
                         ))}
                       </div>
@@ -321,11 +327,12 @@ export default function Home() {
                   }} 
                 />
 
+                {/* connectNulls={false} を設定して欠損データ時に線を途切れさせる */}
                 {viewMode === "top5" && tableData.slice(0, 5).map((song, idx) => (
-                  <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} />
+                  <Line key={song.title} type="monotone" dataKey={song.title} stroke={["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#a855f7"][idx]} strokeWidth={2} dot={false} connectNulls={false} />
                 ))}
-                {viewMode === "total" && <Line type="monotone" dataKey="totalGrowth" name="UVERworld Total" stroke="#ffffff" strokeWidth={3} dot={false} />}
-                {viewMode === "single" && selectedSong && <Line type="monotone" dataKey={selectedSong} name={selectedSong} stroke="#ef4444" strokeWidth={3} dot={false} />}
+                {viewMode === "total" && <Line type="monotone" dataKey="totalGrowth" name="UVERworld Total" stroke="#ffffff" strokeWidth={3} dot={false} connectNulls={false} />}
+                {viewMode === "single" && selectedSong && <Line type="monotone" dataKey={selectedSong} name={selectedSong} stroke="#ef4444" strokeWidth={3} dot={false} connectNulls={false} />}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -367,7 +374,7 @@ export default function Home() {
                       <React.Fragment key={`${song.title}-${date}`}>
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
-                          {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
+                          {song.history[`${date}_inc`] !== null ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
                         </td>
                         <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">
                           {song.history[`${date}_v_rank`] || "-"}
