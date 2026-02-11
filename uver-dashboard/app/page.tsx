@@ -7,7 +7,7 @@ import React, { useEffect, useState, useRef } from "react";
 // 必要に応じてパスを調整してください (例: "@/utils/supabase" など)
 import { supabase } from "./supabase"; 
 import { 
-  ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
+  ComposedChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Scatter
 } from 'recharts';
 
 // チャートデータの型定義
@@ -89,8 +89,6 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 最新の10000件を取得するために order は descending: false (昇順) で limit をかける
-      // もし「最新のデータから1万件」欲しい場合は descending: true にして JS側で reverse する
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
@@ -104,7 +102,6 @@ export default function Home() {
       if (statsError) throw statsError;
 
       if (stats && stats.length > 0) {
-        // 最新から取ったので、時系列計算のために逆転させる
         const chronStats = [...stats].reverse();
 
         const dateSet = new Set<string>();
@@ -268,7 +265,7 @@ export default function Home() {
           <div className="h-[400px] md:h-[500px] w-full mb-6">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ bottom: 30, top: 10, left: 0, right: 0 }}> 
-                <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
+                {/* CartesianGrid（横棒）を削除しました */}
                 <XAxis dataKey="name" stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} dy={5} />
                 <YAxis stroke="#52525b" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(val) => val.toLocaleString()} />
                 <Tooltip 
