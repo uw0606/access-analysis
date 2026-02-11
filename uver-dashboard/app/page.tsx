@@ -1,7 +1,8 @@
 "use client";
 
+// クライアントコンポーネントで動的レンダリングを強制する設定
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const revalidate = 0; // キャッシュを完全に無効化
 
 import React, { useEffect, useState, useRef } from "react";
 import { supabase } from "./supabase"; 
@@ -9,6 +10,7 @@ import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Scatter
 } from 'recharts';
 
+// チャートデータの型定義
 type ChartPoint = {
   name: string;
   fullDate: string;
@@ -18,6 +20,7 @@ type ChartPoint = {
   [key: string]: any; 
 };
 
+// イベントカテゴリに応じた色を返す関数
 const getEventColor = (category: string) => {
   switch (category) {
     case 'LIVE': return '#dc2626';
@@ -84,6 +87,7 @@ export default function Home() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // 最新の10000件を取得
       const { data: stats, error: statsError } = await supabase
         .from("youtube_stats")
         .select("*")
@@ -105,6 +109,7 @@ export default function Home() {
           const d = formatDate(s.created_at);
           if (d === "---") return;
           dateSet.add(d);
+
           if (!songsMap[s.title]) {
             songsMap[s.title] = {
               artist: "UVERworld",
@@ -132,9 +137,11 @@ export default function Home() {
         });
 
         const songsArray = Object.values(songsMap);
+
         uniqueDates.forEach((date, idx) => {
           const prevDate = uniqueDates[idx - 1];
           const chartIdx = tempChartData.findIndex(d => d.fullDate === date);
+
           songsArray.forEach((s: any) => {
             const currentViews = s.history[date] || (prevDate ? s.history[prevDate] : 0);
             const prevViews = prevDate ? s.history[prevDate] : null;
@@ -150,16 +157,24 @@ export default function Home() {
             }
           });
 
-          const dayRanking = [...songsArray].sort((a: any, b: any) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
+          const dayRanking = [...songsArray]
+            .sort((a: any, b: any) => (b.history[`${date}_inc`] || 0) - (a.history[`${date}_inc`] || 0));
+
           dayRanking.forEach((s: any, rIdx) => {
             const currentRank = rIdx + 1;
             s.history[`${date}_g_rank`] = currentRank;
+
             if (prevDate) {
               const prevRank = s.history[`${prevDate}_g_rank`];
-              if (!prevRank) s.history[`${date}_diff`] = "new";
-              else if (currentRank < prevRank) s.history[`${date}_diff`] = "up";
-              else if (currentRank > prevRank) s.history[`${date}_diff`] = "down";
-              else s.history[`${date}_diff`] = "keep";
+              if (!prevRank) {
+                s.history[`${date}_diff`] = "new";
+              } else if (currentRank < prevRank) {
+                s.history[`${date}_diff`] = "up";
+              } else if (currentRank > prevRank) {
+                s.history[`${date}_diff`] = "down";
+              } else {
+                s.history[`${date}_diff`] = "keep";
+              }
             } else {
               s.history[`${date}_diff`] = "new";
             }
@@ -170,14 +185,19 @@ export default function Home() {
         const sortedResult = songsArray.sort((a: any, b: any) => {
           const incA = a.history[`${lastDate}_inc`] || 0;
           const incB = b.history[`${lastDate}_inc`] || 0;
-          return incB !== incA ? incB - incA : a.title.localeCompare(b.title);
+          if (incB !== incA) return incB - incA;
+          return a.title.localeCompare(b.title);
         });
         
         setTableData(sortedResult);
         setChartData(tempChartData);
         if (sortedResult.length > 0) setSelectedSong(sortedResult[0].title);
       }
-    } catch (err) { console.error("Fetch error:", err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error("Fetch error:", err); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -198,10 +218,14 @@ export default function Home() {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedEvent(null)} />
           <div className="relative bg-zinc-900 border border-zinc-700 w-full max-w-sm rounded-3xl p-8 shadow-2xl">
             <button onClick={() => setSelectedEvent(null)} className="absolute top-4 right-4 text-zinc-500 hover:text-white text-xl font-bold">×</button>
-            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white`} style={{ backgroundColor: getEventColor(selectedEvent.category) }}>{selectedEvent.category}</div>
+            <div className={`inline-block px-3 py-1 rounded-full text-[8px] font-black mb-4 text-white`} style={{ backgroundColor: getEventColor(selectedEvent.category) }}>
+              {selectedEvent.category}
+            </div>
             <p className="text-zinc-500 font-mono text-[9px] mb-1">{selectedEvent.event_date}</p>
             <h2 className="text-xl font-black italic uppercase leading-tight mb-4 tracking-tighter">{selectedEvent.title}</h2>
-            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 text-[11px] font-medium leading-relaxed whitespace-pre-wrap">{selectedEvent.description || "詳細情報はありません。"}</div>
+            <div className="bg-black/50 p-4 rounded-xl border border-zinc-800 text-zinc-400 text-[11px] font-medium leading-relaxed whitespace-pre-wrap">
+              {selectedEvent.description || "詳細情報はありません。"}
+            </div>
           </div>
         </div>
       )}
@@ -213,9 +237,9 @@ export default function Home() {
             <p className="text-zinc-500 text-[8px] md:text-[9px] mt-1 uppercase tracking-[0.3em]">Performance tracker & Event Correlation</p>
           </div>
           <div className="flex flex-wrap justify-center gap-2">
-            <a href="/calendar" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full border border-zinc-800">カレンダー</a>
-            <a href="/sns" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full border border-zinc-800">SNS解析</a>
-            <a href="/analysis" className="text-[8px] md:text-[9px] bg-white text-black px-4 py-2 rounded-full font-bold">アンケート解析 →</a>
+            <a href="/calendar" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full border border-zinc-800 font-bold uppercase">カレンダー</a>
+            <a href="/sns" className="text-[8px] md:text-[9px] bg-zinc-900 text-zinc-400 px-3 py-2 rounded-full border border-zinc-800 font-bold uppercase">SNS解析</a>
+            <a href="/analysis" className="text-[8px] md:text-[9px] bg-white text-black px-4 py-2 rounded-full font-bold uppercase italic">アンケート解析 →</a>
           </div>
         </header>
 
@@ -225,11 +249,13 @@ export default function Home() {
               <h2 className="text-zinc-500 uppercase text-[9px] tracking-widest font-black border-l-2 border-red-600 pl-3">Growth Analytics</h2>
               <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
                 {(['top5', 'total', 'single'] as const).map((mode) => (
-                  <button key={mode} onClick={() => setViewMode(mode)} className={`px-2 md:px-4 py-1.5 rounded-md text-[8px] font-black uppercase ${viewMode === mode ? 'bg-zinc-800 text-white' : 'text-zinc-500'}`}>{mode}</button>
+                  <button key={mode} onClick={() => setViewMode(mode)} className={`px-2 md:px-4 py-1.5 rounded-md text-[8px] font-black transition-all uppercase ${viewMode === mode ? 'bg-zinc-800 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}>
+                    {mode}
+                  </button>
                 ))}
               </div>
               {viewMode === "single" && (
-                <select value={selectedSong} onChange={(e) => setSelectedSong(e.target.value)} className="bg-zinc-950 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-[8px] outline-none">
+                <select value={selectedSong} onChange={(e) => setSelectedSong(e.target.value)} className="bg-zinc-950 text-white border border-zinc-700 px-3 py-1.5 rounded-lg text-[8px] md:text-[9px] font-black outline-none focus:ring-1 focus:ring-red-600 cursor-pointer">
                   {tableData.map(song => <option key={song.title} value={song.title}>{song.title}</option>)}
                 </select>
               )}
@@ -308,7 +334,9 @@ export default function Home() {
                 <th className="p-2 sticky left-[40px] bg-zinc-950 z-40 border-b border-r border-zinc-800 w-[85px] md:w-[200px]">Song</th>
                 <th className="p-2 border-b border-r border-zinc-800 text-center hidden md:table-cell">Released</th>
                 {dates.map(date => (
-                  <th key={date} colSpan={isMobile ? 3 : 4} className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono">{date.split('/').slice(1).join('/')}</th>
+                  <th key={date} colSpan={isMobile ? 3 : 4} className="p-1.5 text-center border-b border-r border-zinc-800 bg-zinc-900/50 text-zinc-300 font-mono">
+                    {date.split('/').slice(1).join('/')}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -317,7 +345,9 @@ export default function Home() {
                 const isNew = isNewRelease(song.publishedAt);
                 return (
                   <tr key={song.title} className={`border-b border-zinc-800/40 hover:bg-white/5 transition-colors group ${isNew ? 'bg-red-900/10' : ''}`}>
-                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate">{song.artist.slice(0,4)}</td>
+                    <td className="p-2 sticky left-0 bg-black z-30 border-r border-zinc-800 text-zinc-600 font-bold w-[40px] truncate">
+                      {song.artist.slice(0,4)}
+                    </td>
                     <td className="p-2 sticky left-[40px] bg-black z-30 border-r border-zinc-800 font-black text-white w-[85px] md:w-[200px]">
                       <a href={`https://www.youtube.com/watch?v=${song.videoId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 truncate block">
                         <span className="truncate">{song.title}</span>
@@ -328,7 +358,9 @@ export default function Home() {
                     {dates.map(date => (
                       <React.Fragment key={`${song.title}-${date}`}>
                         <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-zinc-400">{(song.history[date] || 0).toLocaleString()}</td>
-                        <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">{song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}</td>
+                        <td className="p-1.5 border-r border-zinc-800/10 text-right font-mono text-yellow-500 bg-yellow-500/5 font-black">
+                          {song.history[`${date}_inc`] > 0 ? `+${song.history[`${date}_inc`].toLocaleString()}` : "-"}
+                        </td>
                         <td className="p-1 border-r border-zinc-800/10 text-center font-mono text-zinc-600 text-[6px] hidden md:table-cell">{song.history[`${date}_v_rank`] || "-"}</td>
                         <td className="p-1.5 border-r border-zinc-800 text-center font-black text-white">
                           <div className="flex items-center justify-center gap-0.5">
