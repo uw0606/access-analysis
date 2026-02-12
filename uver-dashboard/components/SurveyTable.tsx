@@ -225,6 +225,7 @@ export default function SurveyTable() {
           let currentSong = song.replace(/##99_100_TETSU##/g, "99/100騙しの哲").replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!');
           let cleanSong = currentSong.trim();
           if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
+          if (["Just brake the limit!", "Just break the limit!"].includes(cleanSong)) cleanSong = "Just break the limit!";
           if (cleanSong === "GO ON") cleanSong = "GO-ON";
           if (cleanSong) counts[cleanSong] = (counts[cleanSong] || 0) + 1;
         });
