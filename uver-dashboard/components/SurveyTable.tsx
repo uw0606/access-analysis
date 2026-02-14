@@ -32,10 +32,6 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
-/**
- * 日付文字列を YYYY-MM-DD に正規化する補助関数
- * "2026-2-3" -> "2026-02-03"
- */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
   const parts = dateStr.split('T')[0].split('-');
@@ -87,7 +83,6 @@ export default function SurveyTable() {
         setChartWidth(Math.min(width * 0.55, 700));
       }
     };
-    
     updateSize();
     window.addEventListener('resize', updateSize);
     const timer = setTimeout(() => setIsReady(true), 300);
@@ -97,7 +92,6 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
-  // Registeredマークの判定ロジックを正規化
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
       const datePart = normalizeDate(d.created_at);
@@ -105,7 +99,6 @@ export default function SurveyTable() {
     }));
   }, [tableData]);
 
-  // ライブ選択肢のフィルタリングと正規化
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
@@ -125,17 +118,14 @@ export default function SurveyTable() {
       alert("会場タイプを先に選択してください");
       return;
     }
-
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
     const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
-    
     if (isAlreadyRegistered) {
       const confirmOverwrite = window.confirm(
         `【確認】\n${targetDate} の「${selectedLiveForImport.title}」は既に登録されています。\n既存のデータを削除して上書きしてもよろしいですか？`
       );
       if (!confirmOverwrite) return;
     }
-
     setUploading(true);
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -147,16 +137,13 @@ export default function SurveyTable() {
         const worksheet = workbook.Sheets[sheetName];
         const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
         if (!rows || rows.length < 2) throw new Error("データが含まれていません。");
-        
         const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
-          // Python側と型を統一
           const rawVisits = String(row[1] || "").trim();
           const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
           const rawAge = String(row[3] || "").trim();
           const ageDisplay = rawAge.includes("代") ? rawAge : `${rawAge}代`;
-
           return {
             request_song: String(row[0] || "").trim(),
             visits:       visitsDisplay,
@@ -169,17 +156,9 @@ export default function SurveyTable() {
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
-
-        // 削除時も正規化した日付を使用
-        await supabase.from("survey_responses")
-          .delete()
-          .eq("live_name", selectedLiveForImport.title)
-          .gte("created_at", `${targetDate}T00:00:00.000Z`)
-          .lte("created_at", `${targetDate}T23:59:59.999Z`);
-
+        await supabase.from("survey_responses").delete().eq("live_name", selectedLiveForImport.title).gte("created_at", `${targetDate}T00:00:00.000Z`).lte("created_at", `${targetDate}T23:59:59.999Z`);
         const { error } = await supabase.from("survey_responses").insert(formattedData);
         if (error) throw error;
-        
         alert(`完了しました！\n${targetDate} のデータを ${formattedData.length} 件登録しました。`);
         await fetchData();
         setView('analytics');
@@ -197,7 +176,6 @@ export default function SurveyTable() {
     if (files && files.length > 0) processFile(files[0]);
   };
 
-  // メインのフィルタリング処理（ここがズレると表示されない）
   const filteredData = useMemo(() => {
     return tableData.filter(d => {
       const datePart = normalizeDate(d.created_at);
@@ -208,8 +186,6 @@ export default function SurveyTable() {
       return matchY && matchT && matchL;
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
-
-  // --- 以降、描画ロジックは概ね維持（微調整済み） ---
 
   const ageGroupData = useMemo(() => {
     if (activeTab !== 'age') return [];
@@ -239,6 +215,7 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
+        // 曲名分割の際、半角スペース( )を除外しました。これにより「THE OVER」が維持されます。
         const splitSongs = rawVal.split(/[/,、&／＆・\s\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -334,7 +311,8 @@ export default function SurveyTable() {
             <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
-            <a href="https://uw0606.github.io/setlist/" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
+            {/* target="_blank" と rel を追加し、別タブで開くようにしました */}
+            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
               セットリスト制作
             </a>
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
@@ -425,13 +403,11 @@ export default function SurveyTable() {
                 </select>
               </div>
             </div>
-
             <nav className="flex gap-2 mb-10 overflow-x-auto pb-4 no-scrollbar">
               {ANALYSIS_TARGETS.map((target) => (
                 <button key={target.id} onClick={() => setActiveTab(target.id)} className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${activeTab === target.id ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-800 text-zinc-500 hover:border-zinc-400'}`}>{target.label}</button>
               ))}
             </nav>
-
             {filteredData.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center bg-zinc-950 rounded-[40px] border border-zinc-900 text-zinc-700 font-black tracking-widest uppercase">NO DATA</div>
             ) : activeTab === 'song' ? (
