@@ -32,10 +32,19 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
+/**
+ * 日付を YYYY-MM-DD に変換する強化版
+ */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
-  const parts = dateStr.split('T')[0].split('-');
-  if (parts.length !== 3) return dateStr;
+  // T以降をカット
+  let pureDate = dateStr.split('T')[0];
+  // スラッシュをハイフンに変換
+  pureDate = pureDate.replace(/\//g, '-');
+  
+  const parts = pureDate.split('-');
+  if (parts.length !== 3) return pureDate;
+  
   const y = parts[0];
   const m = parts[1].padStart(2, '0');
   const d = parts[2].padStart(2, '0');
@@ -118,14 +127,15 @@ export default function SurveyTable() {
       alert("会場タイプを先に選択してください");
       return;
     }
+
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
     const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
+    
     if (isAlreadyRegistered) {
-      const confirmOverwrite = window.confirm(
-        `【確認】\n${targetDate} の「${selectedLiveForImport.title}」は既に登録されています。\n既存のデータを削除して上書きしてもよろしいですか？`
-      );
+      const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
       if (!confirmOverwrite) return;
     }
+
     setUploading(true);
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -136,7 +146,9 @@ export default function SurveyTable() {
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
-        if (!rows || rows.length < 2) throw new Error("データが含まれていません。");
+        
+        if (!rows || rows.length < 2) throw new Error("データが空です");
+
         const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
@@ -144,6 +156,7 @@ export default function SurveyTable() {
           const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
           const rawAge = String(row[3] || "").trim();
           const ageDisplay = rawAge.includes("代") ? rawAge : `${rawAge}代`;
+
           return {
             request_song: String(row[0] || "").trim(),
             visits:       visitsDisplay,
@@ -156,13 +169,26 @@ export default function SurveyTable() {
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
-        await supabase.from("survey_responses").delete().eq("live_name", selectedLiveForImport.title).gte("created_at", `${targetDate}T00:00:00.000Z`).lte("created_at", `${targetDate}T23:59:59.999Z`);
-        const { error } = await supabase.from("survey_responses").insert(formattedData);
-        if (error) throw error;
-        alert(`完了しました！\n${targetDate} のデータを ${formattedData.length} 件登録しました。`);
+
+        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
+        await supabase.from("survey_responses")
+          .delete()
+          .eq("live_name", selectedLiveForImport.title)
+          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
+          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
+
+        // 新規挿入
+        const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
+        if (insError) throw insError;
+        
+        alert(`成功: ${formattedData.length}件登録しました`);
         await fetchData();
         setView('analytics');
-      } catch (err: any) { alert("エラー: " + err.message); } finally { setUploading(false); }
+      } catch (err: any) { 
+        alert("インポート失敗: " + err.message); 
+      } finally { 
+        setUploading(false); 
+      }
     };
     reader.readAsBinaryString(file);
   };
@@ -187,26 +213,6 @@ export default function SurveyTable() {
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
 
-  const ageGroupData = useMemo(() => {
-    if (activeTab !== 'age') return [];
-    const groupOrder = ["10代", "20代", "30代", "40代", "50代", "60代以上"];
-    const groups: { [key: string]: number } = { "10代": 0, "20代": 0, "30代": 0, "40代": 0, "50代": 0, "60代以上": 0 };
-    filteredData.forEach(item => {
-      const rawAge = String(item.age || "").trim();
-      const numMatch = rawAge.match(/\d+/);
-      if (numMatch) {
-        const val = parseInt(numMatch[0]);
-        if (val >= 10 && val < 20) groups["10代"]++;
-        else if (val >= 20 && val < 30) groups["20代"]++;
-        else if (val >= 30 && val < 40) groups["30代"]++;
-        else if (val >= 40 && val < 50) groups["40代"]++;
-        else if (val >= 50 && val < 60) groups["50代"]++;
-        else if (val >= 60 || val > 1900) groups["60代以上"]++;
-      }
-    });
-    return groupOrder.map(name => ({ name, value: groups[name] })).filter(item => item.value > 0);
-  }, [filteredData, activeTab]);
-
   const chartData = useMemo(() => {
     const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
     const key = target?.key;
@@ -215,7 +221,7 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
-        // 曲名分割の際、半角スペース( )を除外しました。これにより「THE OVER」が維持されます。
+        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -234,6 +240,26 @@ export default function SurveyTable() {
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }))
       .sort((a, b) => activeTab === 'visits' ? (parseInt(a.name) || 0) - (parseInt(b.name) || 0) : b.value - a.value);
+  }, [filteredData, activeTab]);
+
+  const ageGroupData = useMemo(() => {
+    if (activeTab !== 'age') return [];
+    const groupOrder = ["10代", "20代", "30代", "40代", "50代", "60代以上"];
+    const groups: { [key: string]: number } = { "10代": 0, "20代": 0, "30代": 0, "40代": 0, "50代": 0, "60代以上": 0 };
+    filteredData.forEach(item => {
+      const rawAge = String(item.age || "").trim();
+      const numMatch = rawAge.match(/\d+/);
+      if (numMatch) {
+        const val = parseInt(numMatch[0]);
+        if (val >= 10 && val < 20) groups["10代"]++;
+        else if (val >= 20 && val < 30) groups["20代"]++;
+        else if (val >= 30 && val < 40) groups["30代"]++;
+        else if (val >= 40 && val < 50) groups["40代"]++;
+        else if (val >= 50 && val < 60) groups["50代"]++;
+        else if (val >= 60 || val > 1900) groups["60代以上"]++;
+      }
+    });
+    return groupOrder.map(name => ({ name, value: groups[name] })).filter(item => item.value > 0);
   }, [filteredData, activeTab]);
 
   const totalValue = useMemo(() => (activeTab === 'age' ? ageGroupData : chartData).reduce((acc, curr) => acc + curr.value, 0), [chartData, ageGroupData, activeTab]);
@@ -311,7 +337,6 @@ export default function SurveyTable() {
             <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
-            {/* target="_blank" と rel を追加し、別タブで開くようにしました */}
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
               セットリスト制作
             </a>
@@ -403,11 +428,13 @@ export default function SurveyTable() {
                 </select>
               </div>
             </div>
+
             <nav className="flex gap-2 mb-10 overflow-x-auto pb-4 no-scrollbar">
               {ANALYSIS_TARGETS.map((target) => (
                 <button key={target.id} onClick={() => setActiveTab(target.id)} className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${activeTab === target.id ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-800 text-zinc-500 hover:border-zinc-400'}`}>{target.label}</button>
               ))}
             </nav>
+
             {filteredData.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center bg-zinc-950 rounded-[40px] border border-zinc-900 text-zinc-700 font-black tracking-widest uppercase">NO DATA</div>
             ) : activeTab === 'song' ? (
