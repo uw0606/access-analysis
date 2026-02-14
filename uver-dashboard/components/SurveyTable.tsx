@@ -32,6 +32,20 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
+/**
+ * 日付文字列を YYYY-MM-DD に正規化する補助関数
+ * "2026-2-3" -> "2026-02-03"
+ */
+const normalizeDate = (dateStr: string) => {
+  if (!dateStr) return "";
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length !== 3) return dateStr;
+  const y = parts[0];
+  const m = parts[1].padStart(2, '0');
+  const d = parts[2].padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 export default function SurveyTable() {
   const [view, setView] = useState<'analytics' | 'import'>('analytics');
   const [tableData, setTableData] = useState<any[]>([]);
@@ -83,20 +97,22 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
+  // Registeredマークの判定ロジックを正規化
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
-      const datePart = d.created_at ? d.created_at.split('T')[0] : "";
+      const datePart = normalizeDate(d.created_at);
       return `${datePart}_${d.live_name}`;
     }));
   }, [tableData]);
 
+  // ライブ選択肢のフィルタリングと正規化
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       if (matchY && matchT) {
-        const datePart = d.created_at ? d.created_at.split('T')[0] : "Unknown";
+        const datePart = normalizeDate(d.created_at || "Unknown");
         const key = `${datePart}_${d.live_name}`;
         if (!map.has(key)) map.set(key, { key, date: datePart, name: d.live_name });
       }
@@ -110,15 +126,14 @@ export default function SurveyTable() {
       return;
     }
 
-    // 上書き確認ロジックの追加
-    const targetDate = selectedLiveForImport.event_date;
+    const targetDate = normalizeDate(selectedLiveForImport.event_date);
     const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
     
     if (isAlreadyRegistered) {
       const confirmOverwrite = window.confirm(
         `【確認】\n${targetDate} の「${selectedLiveForImport.title}」は既に登録されています。\n既存のデータを削除して上書きしてもよろしいですか？`
       );
-      if (!confirmOverwrite) return; // キャンセル時は何もしない
+      if (!confirmOverwrite) return;
     }
 
     setUploading(true);
@@ -136,11 +151,17 @@ export default function SurveyTable() {
         const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
+          // Python側と型を統一
+          const rawVisits = String(row[1] || "").trim();
+          const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
+          const rawAge = String(row[3] || "").trim();
+          const ageDisplay = rawAge.includes("代") ? rawAge : `${rawAge}代`;
+
           return {
             request_song: String(row[0] || "").trim(),
-            visits:       String(row[1] || "").trim(),
+            visits:       visitsDisplay,
             prefecture:   String(row[2] || "").trim(),
-            age:          String(row[3] || "").trim(),
+            age:          ageDisplay,
             gender:       String(row[4] || "").trim(),
             live_name:    selectedLiveForImport.title,
             venue_type:   selectedTypeForImport,
@@ -149,8 +170,13 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
-        // 既存データの削除を実行してから新規インサート
-        await supabase.from("survey_responses").delete().eq("live_name", selectedLiveForImport.title).gte("created_at", `${targetDate}T00:00:00.000Z`).lte("created_at", `${targetDate}T23:59:59.999Z`);
+        // 削除時も正規化した日付を使用
+        await supabase.from("survey_responses")
+          .delete()
+          .eq("live_name", selectedLiveForImport.title)
+          .gte("created_at", `${targetDate}T00:00:00.000Z`)
+          .lte("created_at", `${targetDate}T23:59:59.999Z`);
+
         const { error } = await supabase.from("survey_responses").insert(formattedData);
         if (error) throw error;
         
@@ -162,27 +188,19 @@ export default function SurveyTable() {
     reader.readAsBinaryString(file);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = () => { setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      processFile(files[0]);
-    }
+    if (files && files.length > 0) processFile(files[0]);
   };
 
+  // メインのフィルタリング処理（ここがズレると表示されない）
   const filteredData = useMemo(() => {
     return tableData.filter(d => {
-      const datePart = d.created_at ? d.created_at.split('T')[0] : "";
+      const datePart = normalizeDate(d.created_at);
       const currentKey = `${datePart}_${d.live_name}`;
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
@@ -190,6 +208,8 @@ export default function SurveyTable() {
       return matchY && matchT && matchL;
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
+
+  // --- 以降、描画ロジックは概ね維持（微調整済み） ---
 
   const ageGroupData = useMemo(() => {
     if (activeTab !== 'age') return [];
@@ -219,28 +239,24 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
-        const protectedVal = rawVal.replace(/99\/100騙しの哲/g, "##99_100_TETSU##");
-        const splitSongs = protectedVal.split(/[/,、&／＆・]+/);
+        const splitSongs = rawVal.split(/[/,、&／＆・\s\n]+/);
         splitSongs.forEach(song => {
-          let currentSong = song.replace(/##99_100_TETSU##/g, "99/100騙しの哲").replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!');
-          let cleanSong = currentSong.trim();
+          let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
           if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
-          if (["Just brake the limit!", "Just break the limit!"].includes(cleanSong)) cleanSong = "Just break the limit!";
-          if (cleanSong === "GO ON") cleanSong = "GO-ON";
           if (cleanSong) counts[cleanSong] = (counts[cleanSong] || 0) + 1;
         });
       } else if (activeTab === 'visits' && rawVal !== "未回答") {
-        let processedVal = rawVal.replace(/一/g, '1').replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
-        const numMatch = processedVal.match(/\d+/);
+        const numMatch = rawVal.match(/\d+/);
         if (numMatch) {
-          const num = parseInt(numMatch[0]);
-          if (num > 0) { const formatted = `${num}回`; counts[formatted] = (counts[formatted] || 0) + 1; }
+          const formatted = `${numMatch[0]}回`;
+          counts[formatted] = (counts[formatted] || 0) + 1;
         }
       } else if (rawVal !== "回" && rawVal !== "未回答" && rawVal !== "") {
         counts[rawVal] = (counts[rawVal] || 0) + 1;
       }
     });
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => activeTab === 'visits' ? (parseInt(a.name) || 0) - (parseInt(b.name) || 0) : b.value - a.value);
+    return Object.entries(counts).map(([name, value]) => ({ name, value }))
+      .sort((a, b) => activeTab === 'visits' ? (parseInt(a.name) || 0) - (parseInt(b.name) || 0) : b.value - a.value);
   }, [filteredData, activeTab]);
 
   const totalValue = useMemo(() => (activeTab === 'age' ? ageGroupData : chartData).reduce((acc, curr) => acc + curr.value, 0), [chartData, ageGroupData, activeTab]);
@@ -267,7 +283,6 @@ export default function SurveyTable() {
 
   const renderChartContent = () => {
     if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-widest">Connect...</div>;
-
     if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
       const data = activeTab === 'age' ? ageGroupData : chartData;
       return (
@@ -340,7 +355,8 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const isAlreadyRegistered = registeredSet.has(`${ev.event_date}_${ev.title}`);
+                  const dateKey = normalizeDate(ev.event_date);
+                  const isAlreadyRegistered = registeredSet.has(`${dateKey}_${ev.title}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
@@ -441,7 +457,7 @@ export default function SurveyTable() {
                   <tbody className="text-[9px]">
                     {filteredData.map((row, idx) => (
                       <tr key={idx} className="border-b border-zinc-900">
-                        <td className="p-4 text-zinc-600 font-mono">{row.created_at?.split('T')[0]}</td>
+                        <td className="p-4 text-zinc-600 font-mono">{normalizeDate(row.created_at)}</td>
                         <td className="p-4 text-zinc-500">{row.live_name}</td>
                         <td className="p-4 text-white font-bold">{row.request_song}</td>
                         <td className="p-4 text-zinc-400">{row.visits}</td>
