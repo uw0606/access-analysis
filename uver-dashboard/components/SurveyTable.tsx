@@ -216,7 +216,7 @@ export default function SurveyTable() {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
         // 曲名分割の際、半角スペース( )を除外しました。これにより「THE OVER」が維持されます。
-        const splitSongs = rawVal.split(/[/,、&／＆・\s\n]+/);
+        const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
           if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
