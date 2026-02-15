@@ -33,7 +33,7 @@ const ANALYSIS_TARGETS = [
 ];
 
 /**
- * 日付を YYYY-MM-DD に変換
+ * 日付を YYYY-MM-DD に変換（時刻を排除）
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
@@ -129,7 +129,7 @@ export default function SurveyTable() {
     const key = `${targetDate}_${liveName}`;
     
     if (registeredSet.has(key)) {
-      const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
+      const confirmOverwrite = window.confirm(`既に ${targetDate} のデータがあります。上書きしますか？\n(別の日付のデータは削除されません)`);
       if (!confirmOverwrite) return;
     }
 
@@ -158,18 +158,21 @@ export default function SurveyTable() {
             live_name:    liveName,
             venue_type:   selectedTypeForImport,
             event_year:   currentEventYear,
-            created_at:   targetDate, // Pythonスクリプトに合わせ時刻なし形式で保存
+            created_at:   targetDate, // 時刻情報を削った日付のみを保存
           };
         }).filter(Boolean);
 
-        // 重複削除
-        await supabase.from("survey_responses").delete().eq("live_name", liveName).eq("created_at", targetDate);
+        // 重複削除の修正：日付(created_at)とライブ名(live_name)が両方一致するものだけを削除
+        await supabase.from("survey_responses")
+          .delete()
+          .eq("live_name", liveName)
+          .eq("created_at", targetDate);
 
         // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
-        alert(`成功: ${formattedData.length}件登録しました`);
+        alert(`成功: ${targetDate} 分として ${formattedData.length}件登録しました`);
         await fetchData();
         setView('analytics');
       } catch (err: any) { 
@@ -270,7 +273,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.1</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.2</p>
           </div>
           <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
             {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
