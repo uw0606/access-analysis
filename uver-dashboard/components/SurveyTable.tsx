@@ -37,10 +37,14 @@ const ANALYSIS_TARGETS = [
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
+  // T以降をカット
   let pureDate = dateStr.split('T')[0];
+  // スラッシュをハイフンに変換
   pureDate = pureDate.replace(/\//g, '-');
+  
   const parts = pureDate.split('-');
   if (parts.length !== 3) return pureDate;
+  
   const y = parts[0];
   const m = parts[1].padStart(2, '0');
   const d = parts[2].padStart(2, '0');
@@ -166,12 +170,12 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
-        // 【修正箇所】削除条件の厳密化。日付を00:00:00〜23:59:59に限定して別日の巻き添えを防ぐ
+        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .gte("created_at", `${targetDate}T00:00:00.000Z`)
-          .lte("created_at", `${targetDate}T23:59:59.999Z`);
+          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
+          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
 
         // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
@@ -217,6 +221,7 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
+        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
