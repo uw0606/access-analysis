@@ -37,14 +37,10 @@ const ANALYSIS_TARGETS = [
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
-  // T以降をカット
   let pureDate = dateStr.split('T')[0];
-  // スラッシュをハイフンに変換
   pureDate = pureDate.replace(/\//g, '-');
-  
   const parts = pureDate.split('-');
   if (parts.length !== 3) return pureDate;
-  
   const y = parts[0];
   const m = parts[1].padStart(2, '0');
   const d = parts[2].padStart(2, '0');
@@ -170,12 +166,13 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
-        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
+        // 【最重要修正】削除範囲を「その日の24時間以内」に限定
+        // これにより、2/13を登録しても2/3のデータが消えることはなくなります
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
-          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
+          .gte("created_at", `${targetDate}T00:00:00Z`)
+          .lte("created_at", `${targetDate}T23:59:59Z`);
 
         // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
@@ -221,7 +218,6 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
-        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -334,7 +330,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.1</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
