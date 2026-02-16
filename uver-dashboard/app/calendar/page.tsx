@@ -125,7 +125,6 @@ export default function CalendarPage() {
   return (
     <main className="min-h-screen bg-black text-white p-6 md:p-12 font-sans">
       <div className="max-w-5xl mx-auto">
-        {/* ヘッダーセクション：ご指定の順序にボタンを配置 */}
         <header className="flex flex-col md:flex-row justify-between items-center mb-12 border-b border-zinc-800 pb-8 gap-6">
           <div>
             <h1 className="text-3xl font-black italic uppercase tracking-tighter">Event <span className="text-red-600">Scheduler</span></h1>
@@ -133,17 +132,12 @@ export default function CalendarPage() {
           </div>
           
           <div className="flex flex-wrap justify-center gap-3">
-            {/* 1. YouTube動画アクセス解析 */}
             <Link href="/" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">
               YouTube動画アクセス解析
             </Link>
-            
-            {/* 2. SNSアクセス解析 */}
             <Link href="/sns" className="text-[10px] bg-zinc-900 text-zinc-400 px-6 py-2 rounded-full hover:bg-zinc-800 transition-all font-bold uppercase tracking-widest border border-zinc-800">
               SNSアクセス解析
             </Link>
-            
-            {/* 3. ライブアンケート解析 */}
             <Link href="/analysis" className="text-[10px] bg-white text-black px-6 py-2 rounded-full hover:bg-red-600 hover:text-white transition-all font-bold uppercase tracking-widest">
               ライブアンケート解析 →
             </Link>
@@ -151,7 +145,6 @@ export default function CalendarPage() {
         </header>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* フォームセクション */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-zinc-900/40 p-6 rounded-3xl border border-zinc-800 shadow-2xl sticky top-8">
               <h2 className="text-[9px] font-black uppercase text-zinc-500 mb-6 tracking-widest border-l-2 border-red-600 pl-3">
@@ -160,14 +153,23 @@ export default function CalendarPage() {
               
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-600 uppercase ml-2">Target Date</label>
-                  <input type="date" className="w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm outline-none focus:border-red-600 transition-colors text-white" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <label htmlFor="calendar-date" className="text-[8px] text-zinc-600 uppercase ml-2">Target Date</label>
+                  <input 
+                    id="calendar-date"
+                    name="calendar-date"
+                    type="date" 
+                    className="w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm outline-none focus:border-red-600 transition-colors text-white" 
+                    value={date} 
+                    onChange={(e) => setDate(e.target.value)} 
+                  />
                 </div>
                 
                 <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-600 uppercase ml-2">Category</label>
+                  <label htmlFor="calendar-category" className="text-[8px] text-zinc-600 uppercase ml-2">Category</label>
                   <div className="relative">
                     <select 
+                      id="calendar-category"
+                      name="calendar-category"
                       className={`w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm outline-none focus:border-white transition-colors appearance-none font-bold ${getCategoryColor(category)}`}
                       value={category} 
                       onChange={(e) => setCategory(e.target.value)}
@@ -182,13 +184,28 @@ export default function CalendarPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-600 uppercase ml-2">Event Title</label>
-                  <input type="text" placeholder="e.g., ARENA TOUR 2026" className="w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm outline-none focus:border-red-600 transition-colors font-bold" value={title} onChange={(e) => setTitle(e.target.value)} />
+                  <label htmlFor="calendar-title" className="text-[8px] text-zinc-600 uppercase ml-2">Event Title</label>
+                  <input 
+                    id="calendar-title"
+                    name="calendar-title"
+                    type="text" 
+                    placeholder="e.g., ARENA TOUR 2026" 
+                    className="w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm outline-none focus:border-red-600 transition-colors font-bold" 
+                    value={title} 
+                    onChange={(e) => setTitle(e.target.value)} 
+                  />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[8px] text-zinc-600 uppercase ml-2">Notes</label>
-                  <textarea placeholder="Description..." className="w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm h-24 outline-none focus:border-red-600 transition-colors resize-none" value={description} onChange={(e) => setDescription(e.target.value)} />
+                  <label htmlFor="calendar-description" className="text-[8px] text-zinc-600 uppercase ml-2">Notes</label>
+                  <textarea 
+                    id="calendar-description"
+                    name="calendar-description"
+                    placeholder="Description..." 
+                    className="w-full bg-black border border-zinc-800 p-3 rounded-xl text-sm h-24 outline-none focus:border-red-600 transition-colors resize-none" 
+                    value={description} 
+                    onChange={(e) => setDescription(e.target.value)} 
+                  />
                 </div>
                 
                 <div className="flex gap-2 pt-4">
@@ -206,7 +223,6 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          {/* カレンダーセクション */}
           <div className="lg:col-span-2">
             <div className="bg-zinc-900/20 rounded-3xl border border-zinc-800 overflow-hidden shadow-2xl">
               <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
