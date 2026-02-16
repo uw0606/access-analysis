@@ -32,6 +32,9 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
+/**
+ * 日付を YYYY-MM-DD に変換する
+ */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
   let pureDate = dateStr.split('T')[0];
@@ -94,11 +97,9 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
+  // 重複チェック用：ライブ名と年度（または日付）で判定
   const registeredSet = useMemo(() => {
-    return new Set(tableData.map(d => {
-      const datePart = normalizeDate(d.created_at);
-      return `${datePart}_${d.live_name}`;
-    }));
+    return new Set(tableData.map(d => `${d.event_year}_${d.live_name}`));
   }, [tableData]);
 
   const registeredLiveOptions = useMemo(() => {
@@ -117,16 +118,18 @@ export default function SurveyTable() {
 
   const processFile = async (file: File) => {
     if (!selectedLiveForImport || !selectedTypeForImport) {
-      alert("会場タイプを先に選択してください");
+      alert("ライブと会場タイプを選択してください");
       return;
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const currentEventYear = targetDate.split('-')[0];
-    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
+    const targetYear = targetDate.split('-')[0];
+    
+    // 修正：削除と上書きの判定を「ライブ名＋年度」に統一
+    const isAlreadyRegistered = registeredSet.has(`${targetYear}_${selectedLiveForImport.title}`);
     
     if (isAlreadyRegistered) {
-      const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
+      const confirmOverwrite = window.confirm(`「${selectedLiveForImport.title}」のデータは既に存在します。上書きしますか？`);
       if (!confirmOverwrite) return;
     }
 
@@ -145,6 +148,7 @@ export default function SurveyTable() {
 
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
+          
           const rawVisits = String(row[1] || "").trim();
           const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
           const rawAge = String(row[3] || "").trim();
@@ -158,17 +162,19 @@ export default function SurveyTable() {
             gender:       String(row[4] || "").trim(),
             live_name:    selectedLiveForImport.title,
             venue_type:   selectedTypeForImport,
-            event_year:   currentEventYear,
+            event_year:   targetYear,
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
 
-        // 【修正】日付範囲ではなく「名前」と「年度」で特定して削除（他日程の巻き添えを防止）
+        // 【重要】修正：日付の範囲(gte/lte)ではなく「ライブ名」と「年度」でピンポイント削除
+        // これにより隣接する日付のデータが消えるのを防ぎます
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .eq("event_year", currentEventYear);
+          .eq("event_year", targetYear);
 
+        // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
@@ -348,8 +354,8 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const dateKey = normalizeDate(ev.event_date);
-                  const isAlreadyRegistered = registeredSet.has(`${dateKey}_${ev.title}`);
+                  const targetYear = normalizeDate(ev.event_date).split('-')[0];
+                  const isAlreadyRegistered = registeredSet.has(`${targetYear}_${ev.title}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
@@ -386,7 +392,7 @@ export default function SurveyTable() {
                       <p className="text-white font-black uppercase text-[12px]">
                         {uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}
                       </p>
-                      <input type="file" className="hidden" id="file-upload" name="survey-file-input" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
+                      <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
                       <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
                       <p className="text-zinc-600 text-[8px] font-mono mt-2 uppercase tracking-widest">Supports .csv, .xlsx</p>
                     </div>
@@ -398,24 +404,21 @@ export default function SurveyTable() {
         ) : (
           <div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="year-select" className="text-zinc-600 font-black text-[8px] uppercase">1. Year</label>
-                <select id="year-select" name="year-filter" value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
+                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
                   <option value="2026">2026</option>
                   <option value="2027">2027</option>
                   <option value="2028">2028</option>
                 </select>
               </div>
-              <div className="flex flex-col gap-2">
-                <label htmlFor="type-select" className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</label>
-                <select id="type-select" name="type-filter" value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
+                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Types</option>{VENUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div className="flex flex-col gap-2">
-                <label htmlFor="live-select" className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live</label>
-                <select id="live-select" name="live-filter" value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live</span>
+                <select value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
                   <option value="All">All Matches</option>
                   {registeredLiveOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.date} | {opt.name}</option>)}
                 </select>
