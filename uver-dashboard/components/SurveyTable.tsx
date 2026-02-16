@@ -97,9 +97,12 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
-  // 重複チェック用：ライブ名と年度（または日付）で判定
+  // 重複チェック用：年度・名前・日付を組み合わせて判定（2days対応）
   const registeredSet = useMemo(() => {
-    return new Set(tableData.map(d => `${d.event_year}_${d.live_name}`));
+    return new Set(tableData.map(d => {
+      const datePart = normalizeDate(d.created_at);
+      return `${d.event_year}_${d.live_name}_${datePart}`;
+    }));
   }, [tableData]);
 
   const registeredLiveOptions = useMemo(() => {
@@ -125,11 +128,11 @@ export default function SurveyTable() {
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
     const targetYear = targetDate.split('-')[0];
     
-    // 修正：削除と上書きの判定を「ライブ名＋年度」に統一
-    const isAlreadyRegistered = registeredSet.has(`${targetYear}_${selectedLiveForImport.title}`);
+    // 修正：日付まで含めた重複チェック
+    const isAlreadyRegistered = registeredSet.has(`${targetYear}_${selectedLiveForImport.title}_${targetDate}`);
     
     if (isAlreadyRegistered) {
-      const confirmOverwrite = window.confirm(`「${selectedLiveForImport.title}」のデータは既に存在します。上書きしますか？`);
+      const confirmOverwrite = window.confirm(`「${targetDate} : ${selectedLiveForImport.title}」のデータは既に存在します。上書きしますか？`);
       if (!confirmOverwrite) return;
     }
 
@@ -167,18 +170,19 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
-        // 【重要】修正：日付の範囲(gte/lte)ではなく「ライブ名」と「年度」でピンポイント削除
-        // これにより隣接する日付のデータが消えるのを防ぎます
+        // 【重要】修正：ライブ名・年度に加えて「日付(created_at)」で削除範囲を絞り込む
+        // これにより2/3のアップロード時に2/4のデータが消えるのを防ぎます
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .eq("event_year", targetYear);
+          .eq("event_year", targetYear)
+          .like("created_at", `${targetDate}%`);
 
         // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
-        alert(`成功: ${formattedData.length}件登録しました`);
+        alert(`成功: ${targetDate}分として ${formattedData.length}件登録しました`);
         await fetchData();
         setView('analytics');
       } catch (err: any) { 
@@ -330,7 +334,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.0</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.1</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
@@ -354,8 +358,10 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const targetYear = normalizeDate(ev.event_date).split('-')[0];
-                  const isAlreadyRegistered = registeredSet.has(`${targetYear}_${ev.title}`);
+                  const targetDate = normalizeDate(ev.event_date);
+                  const targetYear = targetDate.split('-')[0];
+                  // 修正：日付を含めて登録済みか判定
+                  const isAlreadyRegistered = registeredSet.has(`${targetYear}_${ev.title}_${targetDate}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
