@@ -122,6 +122,7 @@ export default function SurveyTable() {
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
+    const currentEventYear = targetDate.split('-')[0];
     const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
     
     if (isAlreadyRegistered) {
@@ -142,7 +143,6 @@ export default function SurveyTable() {
         
         if (!rows || rows.length < 2) throw new Error("データが空です");
 
-        const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
           const rawVisits = String(row[1] || "").trim();
@@ -163,11 +163,11 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
+        // 【修正】日付範囲ではなく「名前」と「年度」で特定して削除（他日程の巻き添えを防止）
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
-          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
+          .eq("event_year", currentEventYear);
 
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
@@ -324,7 +324,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.1</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.0</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
