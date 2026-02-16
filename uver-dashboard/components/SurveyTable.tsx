@@ -33,18 +33,14 @@ const ANALYSIS_TARGETS = [
 ];
 
 /**
- * 日付を YYYY-MM-DD に変換する強化版
+ * 日付を YYYY-MM-DD に変換
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
-  // T以降をカット
   let pureDate = dateStr.split('T')[0];
-  // スラッシュをハイフンに変換
   pureDate = pureDate.replace(/\//g, '-');
-  
   const parts = pureDate.split('-');
   if (parts.length !== 3) return pureDate;
-  
   const y = parts[0];
   const m = parts[1].padStart(2, '0');
   const d = parts[2].padStart(2, '0');
@@ -129,9 +125,9 @@ export default function SurveyTable() {
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
+    const liveName = selectedLiveForImport.title;
     
-    if (isAlreadyRegistered) {
+    if (registeredSet.has(`${targetDate}_${liveName}`)) {
       const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
       if (!confirmOverwrite) return;
     }
@@ -150,6 +146,10 @@ export default function SurveyTable() {
         if (!rows || rows.length < 2) throw new Error("データが空です");
 
         const currentEventYear = targetDate.split('-')[0];
+        
+        // Supabase保存用の日付文字列を作成
+        const saveTimestamp = `${targetDate}T09:00:00Z`;
+
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
           const rawVisits = String(row[1] || "").trim();
@@ -163,19 +163,20 @@ export default function SurveyTable() {
             prefecture:   String(row[2] || "").trim(),
             age:          ageDisplay,
             gender:       String(row[4] || "").trim(),
-            live_name:    selectedLiveForImport.title,
+            live_name:    liveName,
             venue_type:   selectedTypeForImport,
             event_year:   currentEventYear,
-            created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
+            created_at:   saveTimestamp, 
           };
         }).filter(Boolean);
 
-        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
+        // 【最重要修正】削除ロジックを Supabase の timestamptz 形式に合わせる
+        // その日の 00:00:00.000〜23:59:59.999 の範囲のみを削除
         await supabase.from("survey_responses")
           .delete()
-          .eq("live_name", selectedLiveForImport.title)
-          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
-          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
+          .eq("live_name", liveName)
+          .gte("created_at", `${targetDate}T00:00:00.000Z`)
+          .lte("created_at", `${targetDate}T23:59:59.999Z`);
 
         // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
@@ -221,7 +222,6 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
-        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -334,7 +334,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.7</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
