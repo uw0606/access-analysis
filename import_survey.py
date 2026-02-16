@@ -1,16 +1,14 @@
 import pandas as pd
 import re
-import os
 from supabase import create_client
 
 # --- 設定 ---
 SUPABASE_URL = "https://uuzytsezpxqtxxtvybhj.supabase.co"
-# ※セキュリティのため、本番ではService Role Keyの使用を推奨しますが、現状のキーで進めます
 SUPABASE_KEY = "sb_publishable_rOF6ggCSluOwQURMzWISAw_n473FelL"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def import_survey(csv_path):
-    # 1. calendar_eventsテーブルから直近のライブを取得
+    # 1. ライブ情報の取得
     try:
         res = supabase.table("calendar_events") \
             .select("id, event_date, title") \
@@ -32,14 +30,13 @@ def import_survey(csv_path):
         target_event = events[choice]
         target_event_title = target_event['title']
         target_date = target_event['event_date']
-        # 年度フィルター用に年を抽出 (例: "2026")
-        target_year = target_date.split('-')[0]
+        # 重要: Web側のフィルタリングに必須の「年度」を文字列で抽出
+        target_year = str(target_date.split('-')[0])
 
     except Exception as e:
         print(f"❌ ライブ情報の取得に失敗しました: {e}")
         return
 
-    # 会場タイプの選択（Webページのフィルターで必須のため追加）
     print("\n🏢 会場タイプを選択してください:")
     venue_types = ["LIVE HOUSE", "HALL", "ARENA", "FES", "OTHER"]
     for i, t in enumerate(venue_types):
@@ -49,8 +46,11 @@ def import_survey(csv_path):
 
     # 2. CSV読み込み
     print(f"📖 CSV '{csv_path}' を読み込み中...")
-    # エンコーディングエラーが出る場合は encoding='shift_jis' を追加してください
-    df = pd.read_csv(csv_path)
+    # encodingはファイルに合わせて適宜変更してください
+    try:
+        df = pd.read_csv(csv_path, encoding='utf-8')
+    except UnicodeDecodeError:
+        df = pd.read_csv(csv_path, encoding='shift_jis')
     
     def extract_number(text):
         if pd.isna(text): return "1"
@@ -59,50 +59,56 @@ def import_survey(csv_path):
 
     records = []
     
-    # 3. 1行ずつ整形（TSX側のフォーマットに完全一致させる）
+    # 3. 整形ロジックの修正
     for _, row in df.iterrows():
+        # 曲名の取得
         raw_song = str(row['曲名']) if pd.notna(row['曲名']) else "未回答"
-        # 区切り文字で分割
-        songs = re.split(r'[、,/／\s\n]+', raw_song)
         
-        # TSX側と型を合わせる（数値も文字列として扱う）
-        attendance = extract_number(row['項目2'])
-        age_val = str(int(row['年齢'])) if pd.notna(row['年齢']) else "0"
+        # 来場回数（数値だけ抜き出して「〇回」にする）
+        attendance_num = extract_number(row['項目2'])
+        visits_str = f"{attendance_num}回"
         
-        for s in songs:
-            s = s.strip()
-            if not s: continue
-            
-            records.append({
-                "live_name":    target_event_title,  # Web表示に必須
-                "venue_type":   selected_venue_type, # Webフィルターに必須
-                "event_year":   target_year,         # 年度フィルターに必須
-                "request_song": s,                   # キー名をTSXに合わせた
-                "visits":       f"{attendance}回",    # 「1回」の形式に整形
-                "prefecture":   str(row['都道府県名']) if pd.notna(row['都道府県名']) else "不明",
-                "age":          f"{age_val}代",      # 「20代」の形式に整形
-                "gender":       str(row['性別']) if pd.notna(row['性別']) else "不明",
-                "created_at":   f"{target_date}T09:00:00Z" # 日付をライブ日に固定
-            })
+        # 年齢（「20代」の形式にする。28歳なら20代）
+        if pd.notna(row['年齢']):
+            age_val = int(re.findall(r'\d+', str(row['年齢']))[0])
+            age_display = f"{(age_val // 10) * 10}代" if age_val < 60 else "60代以上"
+        else:
+            age_display = "未回答"
 
-    # 4. Supabaseへ一括保存
+        records.append({
+            "live_name":    target_event_title,
+            "venue_type":   selected_venue_type,
+            "event_year":   target_year,
+            "request_song": raw_song.strip(), # 分割はJS側でも行うため、ここでは1セル分を入れる
+            "visits":       visits_str,
+            "prefecture":   str(row['都道府県名']) if pd.notna(row['都道府県名']) else "未回答",
+            "age":          age_display,
+            "gender":       str(row['性別']) if pd.notna(row['性別']) else "未回答",
+            "created_at":   f"{target_date}T09:00:00Z"
+        })
+
+    # 4. Supabaseへ送信
     if records:
         print(f"🚀 {len(records)}件のデータを送信中...")
         try:
-            # 既存の同一ライブ・同一日のデータを削除してから挿入（上書きロジック）
+            # 【重要】削除条件を「日付範囲」から「ライブ名と年度」に変更
+            # これにより、似た日付の別データが消えるのを防ぎます
             supabase.table("survey_responses").delete() \
                 .eq("live_name", target_event_title) \
-                .gte("created_at", f"{target_date}T00:00:00Z") \
-                .lte("created_at", f"{target_date}T23:59:59Z") \
+                .eq("event_year", target_year) \
                 .execute()
 
-            supabase.table("survey_responses").insert(records).execute()
-            print(f"✨ 取り込み成功！ Webページで '{target_event_title}' を確認してください。")
+            # データ量が多い場合は小分けにする
+            chunk_size = 100
+            for i in range(0, len(records), chunk_size):
+                supabase.table("survey_responses").insert(records[i:i+chunk_size]).execute()
+            
+            print(f"✨ 取り込み成功！")
+            print(f"📊 設定: {target_year}年度 / {selected_venue_type} / {target_event_title}")
         except Exception as e:
             print(f"❌ 保存エラー: {e}")
     else:
         print("⚠️ 登録するデータがありませんでした。")
 
 if __name__ == "__main__":
-    # 読み込みたいファイル名に変更してください
     import_survey('20260202.csv')
