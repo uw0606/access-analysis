@@ -67,7 +67,6 @@ export default function SurveyTable() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // ライブ選択肢を100件取得
       const { data: events } = await supabase.from("calendar_events")
         .select("*")
         .eq("category", "LIVE")
@@ -75,11 +74,11 @@ export default function SurveyTable() {
         .limit(100);
       setLiveEvents(events || []);
 
-      // 【重要】取得上限を5000件に拡大。これで古いデータが押し出されるのを防ぎます
+      // 【修正】取得上限を10,000件に拡大。これで1公演700件×10公演以上でも溢れません
       const { data: responses, error } = await supabase.from("survey_responses")
         .select("*")
         .order('created_at', { ascending: false })
-        .limit(5000); 
+        .limit(10000); 
 
       if (error) console.error("Fetch Error:", error);
       setTableData(responses || []);
@@ -108,7 +107,7 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
-  // 重複チェック用：年度・名前・日付を組み合わせて判定
+  // 重複チェック用
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
       const datePart = normalizeDate(d.created_at);
@@ -119,7 +118,6 @@ export default function SurveyTable() {
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
-      // String変換で型不一致によるフィルタ漏れを防止
       const matchY = anaYear === "All" || String(d.event_year) === String(anaYear);
       const matchT = anaType === "All" || d.venue_type === anaType;
       if (matchY && matchT) {
@@ -139,12 +137,10 @@ export default function SurveyTable() {
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
     const targetYear = targetDate.split('-')[0];
-    
-    // 日付まで含めた重複チェック
     const isAlreadyRegistered = registeredSet.has(`${targetYear}_${selectedLiveForImport.title}_${targetDate}`);
     
     if (isAlreadyRegistered) {
-      const confirmOverwrite = window.confirm(`「${targetDate} : ${selectedLiveForImport.title}」のデータは既に存在します。上書きしますか？`);
+      const confirmOverwrite = window.confirm(`「${targetDate}」のデータは既に存在します。上書きしますか？`);
       if (!confirmOverwrite) return;
     }
 
@@ -163,7 +159,6 @@ export default function SurveyTable() {
 
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
-          
           const rawVisits = String(row[1] || "").trim();
           const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
           const rawAge = String(row[3] || "").trim();
@@ -182,14 +177,12 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
-        // 削除範囲を「日付」まで絞り込む（他日程を巻き込まない）
+        // 【修正】ピンポイント削除：ライブ名と「日付」が一致するものだけを削除
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .eq("event_year", targetYear)
           .like("created_at", `${targetDate}%`);
 
-        // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
@@ -224,6 +217,8 @@ export default function SurveyTable() {
       return matchY && matchT && matchL;
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
+
+  // ... (chartData, ageGroupData, totalValue, getItemColor, CustomTooltip は変更なし)
 
   const chartData = useMemo(() => {
     const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
@@ -345,7 +340,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.2</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.5</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
