@@ -32,9 +32,6 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
-/**
- * 日付を YYYY-MM-DD に変換する強化版
- */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
   let pureDate = dateStr.split('T')[0];
@@ -166,15 +163,12 @@ export default function SurveyTable() {
           };
         }).filter(Boolean);
 
-        // 【最重要修正】削除範囲を「その日の24時間以内」に限定
-        // これにより、2/13を登録しても2/3のデータが消えることはなくなります
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .gte("created_at", `${targetDate}T00:00:00Z`)
-          .lte("created_at", `${targetDate}T23:59:59Z`);
+          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
+          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
 
-        // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
@@ -392,7 +386,7 @@ export default function SurveyTable() {
                       <p className="text-white font-black uppercase text-[12px]">
                         {uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}
                       </p>
-                      <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
+                      <input type="file" className="hidden" id="file-upload" name="survey-file-input" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
                       <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
                       <p className="text-zinc-600 text-[8px] font-mono mt-2 uppercase tracking-widest">Supports .csv, .xlsx</p>
                     </div>
@@ -404,21 +398,24 @@ export default function SurveyTable() {
         ) : (
           <div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
-              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
-                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="year-select" className="text-zinc-600 font-black text-[8px] uppercase">1. Year</label>
+                <select id="year-select" name="year-filter" value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
                   <option value="2026">2026</option>
                   <option value="2027">2027</option>
                   <option value="2028">2028</option>
                 </select>
               </div>
-              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
-                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="type-select" className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</label>
+                <select id="type-select" name="type-filter" value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Types</option>{VENUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live</span>
-                <select value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="live-select" className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live</label>
+                <select id="live-select" name="live-filter" value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
                   <option value="All">All Matches</option>
                   {registeredLiveOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.date} | {opt.name}</option>)}
                 </select>
