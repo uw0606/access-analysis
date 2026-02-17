@@ -422,10 +422,9 @@ export default function SurveyTable() {
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year (DB Filter)</span>
                 <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
-                  <option value="2024">2024</option>
-                  <option value="2025">2025</option>
                   <option value="2026">2026</option>
                   <option value="2027">2027</option>
+                  <option value="2028">2028</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
