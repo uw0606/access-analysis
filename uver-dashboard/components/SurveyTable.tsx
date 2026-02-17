@@ -54,7 +54,6 @@ export default function SurveyTable() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   
-  // 初期値を現在の年に設定（DBフィルタリングを有効にするため）
   const [anaYear, setAnaYear] = useState(new Date().getFullYear().toString());
   const [anaType, setAnaType] = useState("All");
   const [anaLiveKey, setAnaLiveKey] = useState("All");
@@ -66,33 +65,26 @@ export default function SurveyTable() {
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
 
-  // 公演イベント一覧の取得
   const fetchEvents = useCallback(async () => {
     const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false });
     setLiveEvents(events || []);
   }, []);
 
-  // アンケートデータの取得（年度でフィルタリング）
   const fetchSurveyData = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase.from("survey_responses").select("*");
-      
-      // 年度指定がある場合はDB側で絞り込む
       if (anaYear !== "All") {
         query = query.eq("event_year", anaYear);
       }
-
       const { data: responses, error } = await query
         .order('created_at', { ascending: false })
         .limit(50000); 
-
       if (error) console.error("Fetch Error:", error);
       setTableData(responses || []);
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [anaYear]);
 
-  // 初回実行と年度変更時の実行
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
   useEffect(() => { fetchSurveyData(); }, [fetchSurveyData]);
 
@@ -124,7 +116,6 @@ export default function SurveyTable() {
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
-      // fetchSurveyDataで既に年度絞り込み済みだが、All選択時のために残す
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       if (matchY && matchT) {
@@ -166,13 +157,27 @@ export default function SurveyTable() {
         const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
+          
+          // ヘッダー行「項目1」などが含まれる場合はスキップ
+          if (String(row[0]).includes("項目")) return null;
+
+          // 曲名の処理（51%が0.51になる問題への対策）
+          let rawSong = row[0];
+          let songDisplay = "";
+          if (typeof rawSong === 'number' && rawSong > 0 && rawSong < 1) {
+             // 0.51 などの数値を "51%" に戻す
+             songDisplay = (rawSong * 100).toFixed(0) + "%";
+          } else {
+             songDisplay = String(rawSong || "").trim();
+          }
+
           const rawVisits = String(row[1] || "").trim();
           const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
           const rawAge = String(row[3] || "").trim();
           const ageDisplay = rawAge.includes("代") ? rawAge : `${rawAge}代`;
 
           return {
-            request_song: String(row[0] || "").trim(),
+            request_song: songDisplay,
             visits:       visitsDisplay,
             prefecture:   String(row[2] || "").trim(),
             age:          ageDisplay,
