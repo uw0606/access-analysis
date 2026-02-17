@@ -32,6 +32,9 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
+/**
+ * 日付を YYYY-MM-DD に変換する強化版
+ */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
   let pureDate = dateStr.split('T')[0];
@@ -50,7 +53,9 @@ export default function SurveyTable() {
   const [liveEvents, setLiveEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [anaYear, setAnaYear] = useState("All");
+  
+  // 初期値を現在の年に設定（DBフィルタリングを有効にするため）
+  const [anaYear, setAnaYear] = useState(new Date().getFullYear().toString());
   const [anaType, setAnaType] = useState("All");
   const [anaLiveKey, setAnaLiveKey] = useState("All");
   const [selectedLiveForImport, setSelectedLiveForImport] = useState<any>(null);
@@ -61,49 +66,71 @@ export default function SurveyTable() {
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
 
-  const fetchData = useCallback(async () => {
+  // 公演イベント一覧の取得
+  const fetchEvents = useCallback(async () => {
+    const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false });
+    setLiveEvents(events || []);
+  }, []);
+
+  // アンケートデータの取得（年度でフィルタリング）
+  const fetchSurveyData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false });
-      setLiveEvents(events || []);
+      let query = supabase.from("survey_responses").select("*");
       
-      // 【修正点】取得上限を10000件に拡大
-      const { data: responses, error } = await supabase
-        .from("survey_responses")
-        .select("*")
+      // 年度指定がある場合はDB側で絞り込む
+      if (anaYear !== "All") {
+        query = query.eq("event_year", anaYear);
+      }
+
+      const { data: responses, error } = await query
         .order('created_at', { ascending: false })
         .limit(50000); 
 
       if (error) console.error("Fetch Error:", error);
       setTableData(responses || []);
     } catch (err) { console.error(err); } finally { setLoading(false); }
-  }, []);
+  }, [anaYear]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // 初回実行と年度変更時の実行
+  useEffect(() => { fetchEvents(); }, [fetchEvents]);
+  useEffect(() => { fetchSurveyData(); }, [fetchSurveyData]);
 
   useEffect(() => {
     const updateSize = () => {
       const width = window.innerWidth;
-      setChartWidth(width < 768 ? width - 48 : Math.min(width * 0.55, 700));
+      if (width < 768) {
+        setChartWidth(width - 48); 
+      } else {
+        setChartWidth(Math.min(width * 0.55, 700));
+      }
     };
     updateSize();
     window.addEventListener('resize', updateSize);
     const timer = setTimeout(() => setIsReady(true), 300);
-    return () => { window.removeEventListener('resize', updateSize); clearTimeout(timer); };
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      clearTimeout(timer);
+    };
   }, [activeTab]);
 
-  const generateKey = (date: string, name: string) => `${normalizeDate(date)}_${String(name || "").trim()}`;
-
-  const registeredSet = useMemo(() => new Set(tableData.map(d => generateKey(d.created_at, d.live_name))), [tableData]);
+  const registeredSet = useMemo(() => {
+    return new Set(tableData.map(d => {
+      const datePart = normalizeDate(d.created_at);
+      return `${datePart}_${d.live_name}`;
+    }));
+  }, [tableData]);
 
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
+      // fetchSurveyDataで既に年度絞り込み済みだが、All選択時のために残す
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       if (matchY && matchT) {
-        const key = generateKey(d.created_at, d.live_name);
-        if (!map.has(key)) map.set(key, { key, date: normalizeDate(d.created_at), name: d.live_name });
+        const datePart = normalizeDate(d.created_at || "Unknown");
+        const key = `${datePart}_${d.live_name}`;
+        if (!map.has(key)) map.set(key, { key, date: datePart, name: d.live_name });
       }
     });
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
@@ -111,15 +138,17 @@ export default function SurveyTable() {
 
   const processFile = async (file: File) => {
     if (!selectedLiveForImport || !selectedTypeForImport) {
-      alert("公演と会場タイプを選択してください");
+      alert("会場タイプを先に選択してください");
       return;
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const liveTitle = String(selectedLiveForImport.title || "").trim();
-    const isAlreadyRegistered = registeredSet.has(generateKey(targetDate, liveTitle));
+    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
     
-    if (isAlreadyRegistered && !window.confirm(`既にデータがあります。上書きしますか？`)) return;
+    if (isAlreadyRegistered) {
+      const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
+      if (!confirmOverwrite) return;
+    }
 
     setUploading(true);
     const reader = new FileReader();
@@ -148,34 +177,30 @@ export default function SurveyTable() {
             prefecture:   String(row[2] || "").trim(),
             age:          ageDisplay,
             gender:       String(row[4] || "").trim(),
-            live_name:    liveTitle,
+            live_name:    selectedLiveForImport.title,
             venue_type:   selectedTypeForImport,
             event_year:   currentEventYear,
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
 
-        // 既存削除
         await supabase.from("survey_responses")
           .delete()
-          .eq("live_name", liveTitle)
-          .gte("created_at", `${targetDate}T00:00:00Z`)
-          .lte("created_at", `${targetDate}T23:59:59Z`);
+          .eq("live_name", selectedLiveForImport.title)
+          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
+          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
 
-        // 【修正点】分割挿入（チャンク処理）: 500件ずつループで回す
-        const chunkSize = 500;
-        for (let i = 0; i < formattedData.length; i += chunkSize) {
-          const chunk = formattedData.slice(i, i + chunkSize);
-          const { error: insError } = await supabase.from("survey_responses").insert(chunk);
-          if (insError) throw insError;
-        }
+        const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
+        if (insError) throw insError;
         
         alert(`成功: ${formattedData.length}件登録しました`);
-        await fetchData();
+        await fetchSurveyData();
         setView('analytics');
       } catch (err: any) { 
         alert("インポート失敗: " + err.message); 
-      } finally { setUploading(false); }
+      } finally { 
+        setUploading(false); 
+      }
     };
     reader.readAsBinaryString(file);
   };
@@ -185,12 +210,14 @@ export default function SurveyTable() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0]);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) processFile(files[0]);
   };
 
   const filteredData = useMemo(() => {
     return tableData.filter(d => {
-      const currentKey = generateKey(d.created_at, d.live_name);
+      const datePart = normalizeDate(d.created_at);
+      const currentKey = `${datePart}_${d.live_name}`;
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       const matchL = anaLiveKey === "All" || currentKey === anaLiveKey;
@@ -250,11 +277,12 @@ export default function SurveyTable() {
 
   const getItemColor = (name: string, index: number) => {
     if (activeTab === 'gender' && GENDER_COLORS[name]) return GENDER_COLORS[name];
-    return activeTab === 'prefecture' ? '#ef4444' : COLORS[index % COLORS.length];
+    if (activeTab === 'prefecture') return '#ef4444';
+    return COLORS[index % COLORS.length];
   };
 
   const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload?.[0]) {
+    if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
         <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-2xl">
@@ -269,13 +297,15 @@ export default function SurveyTable() {
 
   const renderChartContent = () => {
     if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-widest">Connect...</div>;
-    if (['gender', 'visits', 'age'].includes(activeTab)) {
+    if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
       const data = activeTab === 'age' ? ageGroupData : chartData;
       return (
         <div className="flex justify-center items-center w-full min-h-[400px]">
           <PieChart width={chartWidth} height={380} key={`pie-${chartWidth}`}>
             <Pie data={data} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" nameKey="name" stroke="none" isAnimationActive={false}>
-              {data.map((entry, i) => <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />)}
+              {data.map((entry, i) => (
+                <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
+              ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', paddingTop: '20px' }} />
@@ -315,10 +345,12 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6 (Quota Optimized)</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
-            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">セットリスト制作</a>
+            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
+              セットリスト制作
+            </a>
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
               {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
             </button>
@@ -337,13 +369,14 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const isRegistered = registeredSet.has(generateKey(ev.event_date, ev.title));
+                  const dateKey = normalizeDate(ev.event_date);
+                  const isAlreadyRegistered = registeredSet.has(`${dateKey}_${ev.title}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
                       <div className="flex justify-between items-center text-[8px] font-mono text-zinc-500">
                         <span>{ev.event_date}</span>
-                        {isRegistered && <span className="text-red-500 uppercase font-black">Registered</span>}
+                        {isAlreadyRegistered && <span className="text-red-500 uppercase font-black">Registered</span>}
                       </div>
                       <div className="font-bold text-[11px] mt-1">{ev.title}</div>
                     </button>
@@ -361,9 +394,20 @@ export default function SurveyTable() {
                     ))}
                   </div>
                   {selectedTypeForImport && (
-                    <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${isDragging ? 'border-red-500 bg-red-500/10 scale-[1.02]' : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'}`}>
-                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}</p>
-                      <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files?.[0] && processFile(e.target.files[0])} />
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${
+                        isDragging 
+                          ? 'border-red-500 bg-red-500/10 scale-[1.02]' 
+                          : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'
+                      }`}
+                    >
+                      <p className="text-white font-black uppercase text-[12px]">
+                        {uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}
+                      </p>
+                      <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
                       <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
                       <p className="text-zinc-600 text-[8px] font-mono mt-2 uppercase tracking-widest">Supports .csv, .xlsx</p>
                     </div>
@@ -375,20 +419,23 @@ export default function SurveyTable() {
         ) : (
           <div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
-              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
-                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
+              <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year (DB Filter)</span>
+                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
-                  {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
-                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
+                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Types</option>{VENUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">3. Registered Live</span>
                 <select value={anaLiveKey} onChange={(e) => setAnaLiveKey(e.target.value)} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
-                  <option value="All">All Matches</option>
+                  <option value="All">All Matches ({filteredData.length} 件)</option>
                   {registeredLiveOptions.map(opt => <option key={opt.key} value={opt.key}>{opt.date} | {opt.name}</option>)}
                 </select>
               </div>
