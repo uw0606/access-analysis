@@ -232,20 +232,36 @@ export default function SurveyTable() {
     const key = target?.key;
     if (!key || filteredData.length === 0) return [];
     const counts: { [key: string]: number } = {};
+    
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
+      
       if (activeTab === 'song' && rawVal !== "未回答") {
-        const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
+        // 特定の曲「99/100騙しの哲」のスラッシュが分割されないよう一時的に置換
+        let processedVal = rawVal.replace(/99\/100騙しの哲/g, "TEMP_哲");
+
+        // 区切り文字で分割
+        const splitSongs = processedVal.split(/[/,、&／＆・\n]+/);
+        
         splitSongs.forEach(song => {
-          let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
+          // 置換していた文字列を元の「99/100騙しの哲」に戻す
+          let cleanSong = song.replace(/TEMP_哲/g, "99/100騙しの哲")
+                             .replace(/[（(].*?[）)]/g, '')
+                             .replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '')
+                             .replace(/！/g, '!')
+                             .trim();
+
+          // 表記ゆれの統一
           if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
-          if (cleanSong) counts[cleanSong] = (counts[cleanSong] || 0) + 1;
+          
+          if (cleanSong) {
+            counts[cleanSong] = (counts[cleanSong] || 0) + 1;
+          }
         });
       } else if (activeTab === 'visits' && rawVal !== "未回答") {
         const numMatch = rawVal.match(/\d+/);
         if (numMatch) {
           const numValue = parseInt(numMatch[0]);
-          // 0回は集計から除外
           if (numValue > 0) {
             const formatted = `${numValue}回`;
             counts[formatted] = (counts[formatted] || 0) + 1;
@@ -255,6 +271,7 @@ export default function SurveyTable() {
         counts[rawVal] = (counts[rawVal] || 0) + 1;
       }
     });
+
     return Object.entries(counts).map(([name, value]) => ({ name, value }))
       .sort((a, b) => activeTab === 'visits' ? (parseInt(a.name) || 0) - (parseInt(b.name) || 0) : b.value - a.value);
   }, [filteredData, activeTab]);
