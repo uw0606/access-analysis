@@ -158,14 +158,11 @@ export default function SurveyTable() {
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
           
-          // ヘッダー行「項目1」などが含まれる場合はスキップ
           if (String(row[0]).includes("項目")) return null;
 
-          // 曲名の処理（51%が0.51になる問題への対策）
           let rawSong = row[0];
           let songDisplay = "";
           if (typeof rawSong === 'number' && rawSong > 0 && rawSong < 1) {
-             // 0.51 などの数値を "51%" に戻す
              songDisplay = (rawSong * 100).toFixed(0) + "%";
           } else {
              songDisplay = String(rawSong || "").trim();
@@ -247,8 +244,12 @@ export default function SurveyTable() {
       } else if (activeTab === 'visits' && rawVal !== "未回答") {
         const numMatch = rawVal.match(/\d+/);
         if (numMatch) {
-          const formatted = `${numMatch[0]}回`;
-          counts[formatted] = (counts[formatted] || 0) + 1;
+          const numValue = parseInt(numMatch[0]);
+          // 0回は集計から除外
+          if (numValue > 0) {
+            const formatted = `${numValue}回`;
+            counts[formatted] = (counts[formatted] || 0) + 1;
+          }
         }
       } else if (rawVal !== "回" && rawVal !== "未回答" && rawVal !== "") {
         counts[rawVal] = (counts[rawVal] || 0) + 1;
@@ -427,9 +428,10 @@ export default function SurveyTable() {
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year (DB Filter)</span>
                 <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
                   <option value="2026">2026</option>
                   <option value="2027">2027</option>
-                  <option value="2028">2028</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
