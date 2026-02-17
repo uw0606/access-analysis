@@ -4,18 +4,18 @@ from supabase import create_client
 
 # --- 設定 ---
 SUPABASE_URL = "https://uuzytsezpxqtxxtvybhj.supabase.co"
-# クライアントサイドのキー（もし権限エラーが出る場合はService Role Keyへの変更を推奨）
 SUPABASE_KEY = "sb_publishable_rOF6ggCSluOwQURMzWISAw_n473FelL"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def import_survey(csv_path):
     # 1. calendar_eventsテーブルからライブ情報を取得
     try:
+        # 件数を15から100に増やし、古い日程も見落とさないようにします
         res = supabase.table("calendar_events") \
             .select("id, event_date, title") \
             .eq("category", "LIVE") \
             .order("event_date", desc=True) \
-            .limit(15) \
+            .limit(100) \
             .execute()
         
         events = res.data
@@ -25,14 +25,15 @@ def import_survey(csv_path):
 
         print("\n📅 アンケートデータを紐付けるライブを選択してください:")
         for i, ev in enumerate(events):
-            print(f"[{i}] {ev['event_date']} : {ev['title']}")
+            print(f"[{i:2}] {ev['event_date']} : {ev['title']}")
         
         choice = int(input("\n選択する番号を入力してください: "))
         target_event = events[choice]
         target_event_title = target_event['title']
         target_date = target_event['event_date']  # YYYY-MM-DD
-        # 年度フィルター用に年を抽出
         target_year = str(target_date.split('-')[0])
+
+        print(f"\n👉 選択中: {target_date} / {target_event_title}")
 
     except Exception as e:
         print(f"❌ ライブ情報の取得に失敗しました: {e}")
@@ -47,7 +48,7 @@ def import_survey(csv_path):
     selected_venue_type = venue_types[v_choice]
 
     # 2. CSV読み込み
-    print(f"📖 CSV '{csv_path}' を読み込み中...")
+    print(f"\n📖 CSV '{csv_path}' を読み込み中...")
     try:
         df = pd.read_csv(csv_path, encoding='utf-8')
     except UnicodeDecodeError:
@@ -63,12 +64,9 @@ def import_survey(csv_path):
     # 3. 1行ずつ整形
     for _, row in df.iterrows():
         raw_song = str(row['曲名']) if pd.notna(row['曲名']) else "未回答"
-        
-        # 来場回数
         attendance_num = extract_number(row['項目2'])
         visits_str = f"{attendance_num}回"
         
-        # 年齢
         if pd.notna(row['年齢']):
             nums = re.findall(r'\d+', str(row['年齢']))
             if nums:
@@ -95,9 +93,10 @@ def import_survey(csv_path):
     if records:
         print(f"🚀 {len(records)}件のデータを送信中...")
         try:
-            # 【重要】ピンポイント削除ロジックの強化
-            # 「ライブ名」＋「年度」＋「ライブ日（created_atの前半一致）」で絞り込み
-            # これにより、同じ会場名・同じ年の別日のデータが消えるのを防ぎます
+            # 【重要】ピンポイント削除ロジック
+            # ライブ名、年度、そして「日付（target_date）」が完全一致するもののみを削除。
+            # 他の日付のデータには一切干渉しません。
+            print(f"🧹 {target_date} 分の既存データを整理しています...")
             supabase.table("survey_responses").delete() \
                 .eq("live_name", target_event_title) \
                 .eq("event_year", target_year) \
@@ -110,12 +109,11 @@ def import_survey(csv_path):
                 supabase.table("survey_responses").insert(records[i:i+chunk_size]).execute()
             
             print(f"✨ 取り込み成功！")
-            print(f"📊 {target_date} [{target_event_title}] のデータを更新しました。")
+            print(f"📊 {target_date} [{target_event_title}] のデータとして保存されました。")
         except Exception as e:
             print(f"❌ 保存エラー: {e}")
     else:
         print("⚠️ 登録するデータがありませんでした。")
 
 if __name__ == "__main__":
-    # ファイル名を指定して実行
-    import_survey('20260202.csv')
+    import_survey('ここにファイル名.csv')
