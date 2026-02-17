@@ -60,7 +60,7 @@ export default function SurveyTable() {
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
 
-  // 【修正】データ取得を動的に変更
+  // データ取得
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -71,7 +71,7 @@ export default function SurveyTable() {
         .order("event_date", { ascending: false });
       setLiveEvents(events || []);
 
-      // 2. アンケートデータ取得（個別ライブ選択時はそのデータのみ、Allの時は最新3万件）
+      // 2. アンケートデータ取得（フィルタリング対応）
       let query = supabase.from("survey_responses").select("*");
       
       if (anaYear !== "All") query = query.eq("event_year", anaYear);
@@ -105,7 +105,7 @@ export default function SurveyTable() {
     return () => { window.removeEventListener('resize', updateSize); clearTimeout(timer); };
   }, [activeTab]);
 
-  // プルダウンの選択肢（データがあるものだけ表示）
+  // 登録済みライブの選択肢
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
@@ -121,6 +121,7 @@ export default function SurveyTable() {
     return new Set(tableData.map(d => `${normalizeDate(d.created_at)}_${d.live_name}`));
   }, [tableData]);
 
+  // ファイルインポート処理
   const processFile = async (file: File) => {
     if (!selectedLiveForImport || !selectedTypeForImport) {
       alert("ライブと会場タイプを選択してください");
@@ -128,10 +129,11 @@ export default function SurveyTable() {
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
+    const targetTitle = selectedLiveForImport.title; // ここで確実にイベントタイトルを取得
+    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${targetTitle}`);
     
     if (isAlreadyRegistered) {
-      if (!window.confirm(`「${targetDate}」のデータは既に存在します。上書きしますか？`)) return;
+      if (!window.confirm(`「${targetTitle}」のデータは既に存在します。上書きしますか？`)) return;
     }
 
     setUploading(true);
@@ -152,7 +154,7 @@ export default function SurveyTable() {
             prefecture: String(row[2] || "").trim(),
             age: String(row[3] || "").includes("代") ? String(row[3]) : `${row[3]}代`,
             gender: String(row[4] || "").trim(),
-            live_name: selectedLiveForImport.title,
+            live_name: targetTitle, // 保存時に確実にライブ名を入れる
             venue_type: selectedTypeForImport,
             event_year: currentEventYear,
             created_at: new Date(`${targetDate}T09:00:00Z`).toISOString(), 
@@ -162,7 +164,7 @@ export default function SurveyTable() {
         // 【上書き処理】ピンポイント削除
         await supabase.from("survey_responses")
           .delete()
-          .eq("live_name", selectedLiveForImport.title)
+          .eq("live_name", targetTitle)
           .like("created_at", `${targetDate}%`);
 
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
@@ -177,7 +179,6 @@ export default function SurveyTable() {
   };
 
   const filteredData = useMemo(() => {
-    // fetchData側ですでに絞り込まれているが、念のためフロントでも最終フィルタ
     return tableData.filter(d => {
       const datePart = normalizeDate(d.created_at);
       const currentKey = `${datePart}_${d.live_name}`;
@@ -188,7 +189,7 @@ export default function SurveyTable() {
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
 
-  // 集計ロジック（chartData, ageGroupDataなどは既存のものを維持）
+  // 集計ロジック
   const chartData = useMemo(() => {
     const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
     const key = target?.key;
@@ -242,7 +243,7 @@ export default function SurveyTable() {
         <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-2xl">
           <p className="text-white font-black text-[11px] mb-1">{data.name}</p>
           <p className="text-red-500 font-mono text-[10px]">COUNT: {data.value}</p>
-          <p className="text-zinc-400 font-mono text-[10px]">RATIO: {((data.value / totalValue) * 100).toFixed(1)}%</p>
+          <p className="text-zinc-400 font-mono text-[10px]">RATIO: {((data.value / (totalValue || 1)) * 100).toFixed(1)}%</p>
         </div>
       );
     }
@@ -283,7 +284,7 @@ export default function SurveyTable() {
     }
   };
 
-  if (loading) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono text-xs tracking-tighter">LOADING SYSTEM...</div>;
+  if (loading && tableData.length === 0) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono text-xs tracking-tighter">LOADING SYSTEM...</div>;
 
   return (
     <main className="min-h-screen w-full bg-black text-white p-4 md:p-12 font-sans text-[10px]">
@@ -291,7 +292,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V5.5</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V6.0</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
@@ -314,7 +315,7 @@ export default function SurveyTable() {
                         <span>{ev.event_date}</span>
                         {isRegistered && <span className="text-red-500 font-black uppercase">Registered</span>}
                       </div>
-                      <div className="font-bold text-[11px] mt-1">{ev.title}</div>
+                      <div className="font-bold text-[11px] mt-1 text-white">{ev.title}</div>
                     </button>
                   );
                 })}
@@ -346,7 +347,8 @@ export default function SurveyTable() {
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
                 <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
                   <option value="All">All Years</option>
-                  <option value="2026">2026</option><option value="2027">2027</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
