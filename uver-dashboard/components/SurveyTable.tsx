@@ -72,7 +72,7 @@ export default function SurveyTable() {
         .from("survey_responses")
         .select("*")
         .order('created_at', { ascending: false })
-        .limit(10000); 
+        .limit(50000); 
 
       if (error) console.error("Fetch Error:", error);
       setTableData(responses || []);
