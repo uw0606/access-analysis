@@ -32,9 +32,6 @@ const ANALYSIS_TARGETS = [
   { id: 'list', label: 'Raw Data', title: '全回答リスト', key: '' },
 ];
 
-/**
- * 日付を YYYY-MM-DD に変換する
- */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
   let pureDate = dateStr.split('T')[0];
@@ -59,7 +56,6 @@ export default function SurveyTable() {
   const [selectedLiveForImport, setSelectedLiveForImport] = useState<any>(null);
   const [selectedTypeForImport, setSelectedTypeForImport] = useState("");
   const [activeTab, setActiveTab] = useState('song');
-  
   const [isDragging, setIsDragging] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
@@ -67,14 +63,9 @@ export default function SurveyTable() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: events } = await supabase.from("calendar_events")
-        .select("*")
-        .eq("category", "LIVE")
-        .order("event_date", { ascending: false })
-        .limit(100);
+      const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false }).limit(100);
       setLiveEvents(events || []);
 
-      // 【修正】取得上限を10,000件に拡大。これで1公演700件×10公演以上でも溢れません
       const { data: responses, error } = await supabase.from("survey_responses")
         .select("*")
         .order('created_at', { ascending: false })
@@ -85,34 +76,21 @@ export default function SurveyTable() {
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { 
-    fetchData(); 
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
     const updateSize = () => {
       const width = window.innerWidth;
-      if (width < 768) {
-        setChartWidth(width - 48); 
-      } else {
-        setChartWidth(Math.min(width * 0.55, 700));
-      }
+      width < 768 ? setChartWidth(width - 48) : setChartWidth(Math.min(width * 0.55, 700));
     };
     updateSize();
     window.addEventListener('resize', updateSize);
     const timer = setTimeout(() => setIsReady(true), 300);
-    return () => {
-      window.removeEventListener('resize', updateSize);
-      clearTimeout(timer);
-    };
+    return () => { window.removeEventListener('resize', updateSize); clearTimeout(timer); };
   }, [activeTab]);
 
-  // 重複チェック用
   const registeredSet = useMemo(() => {
-    return new Set(tableData.map(d => {
-      const datePart = normalizeDate(d.created_at);
-      return `${d.event_year}_${d.live_name}_${datePart}`;
-    }));
+    return new Set(tableData.map(d => `${d.event_year}_${d.live_name}_${normalizeDate(d.created_at)}`));
   }, [tableData]);
 
   const registeredLiveOptions = useMemo(() => {
@@ -140,7 +118,7 @@ export default function SurveyTable() {
     const isAlreadyRegistered = registeredSet.has(`${targetYear}_${selectedLiveForImport.title}_${targetDate}`);
     
     if (isAlreadyRegistered) {
-      const confirmOverwrite = window.confirm(`「${targetDate}」のデータは既に存在します。上書きしますか？`);
+      const confirmOverwrite = window.confirm(`【テスト中】「${targetDate}」のデータが存在します。上書き（削除）せずに追加しますか？`);
       if (!confirmOverwrite) return;
     }
 
@@ -151,49 +129,40 @@ export default function SurveyTable() {
         const data = evt.target?.result;
         if (!data) return;
         const workbook = XLSX.read(data, { type: 'binary', codepage: 932 });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+        const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, raw: false });
         
-        if (!rows || rows.length < 2) throw new Error("データが空です");
-
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
-          const rawVisits = String(row[1] || "").trim();
-          const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
-          const rawAge = String(row[3] || "").trim();
-          const ageDisplay = rawAge.includes("代") ? rawAge : `${rawAge}代`;
-
           return {
             request_song: String(row[0] || "").trim(),
-            visits:       visitsDisplay,
-            prefecture:   String(row[2] || "").trim(),
-            age:          ageDisplay,
-            gender:       String(row[4] || "").trim(),
-            live_name:    selectedLiveForImport.title,
-            venue_type:   selectedTypeForImport,
-            event_year:   targetYear,
-            created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
+            visits: String(row[1] || "").includes("回") ? String(row[1]) : `${row[1]}回`,
+            prefecture: String(row[2] || "").trim(),
+            age: String(row[3] || "").includes("代") ? String(row[3]) : `${row[3]}代`,
+            gender: String(row[4] || "").trim(),
+            live_name: selectedLiveForImport.title,
+            venue_type: selectedTypeForImport,
+            event_year: targetYear,
+            created_at: new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
 
-        // 【修正】ピンポイント削除：ライブ名と「日付」が一致するものだけを削除
+        /* * 【テスト：削除処理をオフ】
+         * 下記の delete() 処理を無効化し、既存データが消えるのを防ぎます
+         */
+        /*
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
           .like("created_at", `${targetDate}%`);
+        */
 
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
-        alert(`成功: ${targetDate}分として ${formattedData.length}件登録しました`);
+        alert(`追加成功: ${formattedData.length}件登録しました（テスト中につき旧データは残ります）`);
         await fetchData();
         setView('analytics');
-      } catch (err: any) { 
-        alert("インポート失敗: " + err.message); 
-      } finally { 
-        setUploading(false); 
-      }
+      } catch (err: any) { alert("失敗: " + err.message); } finally { setUploading(false); }
     };
     reader.readAsBinaryString(file);
   };
@@ -217,8 +186,6 @@ export default function SurveyTable() {
       return matchY && matchT && matchL;
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
-
-  // ... (chartData, ageGroupData, totalValue, getItemColor, CustomTooltip は変更なし)
 
   const chartData = useMemo(() => {
     const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
@@ -269,12 +236,7 @@ export default function SurveyTable() {
   }, [filteredData, activeTab]);
 
   const totalValue = useMemo(() => (activeTab === 'age' ? ageGroupData : chartData).reduce((acc, curr) => acc + curr.value, 0), [chartData, ageGroupData, activeTab]);
-
-  const getItemColor = (name: string, index: number) => {
-    if (activeTab === 'gender' && GENDER_COLORS[name]) return GENDER_COLORS[name];
-    if (activeTab === 'prefecture') return '#ef4444';
-    return COLORS[index % COLORS.length];
-  };
+  const getItemColor = (name: string, index: number) => (activeTab === 'gender' && GENDER_COLORS[name]) ? GENDER_COLORS[name] : (activeTab === 'prefecture' ? '#ef4444' : COLORS[index % COLORS.length]);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -292,15 +254,13 @@ export default function SurveyTable() {
 
   const renderChartContent = () => {
     if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-widest">Connect...</div>;
-    if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
+    if (['gender', 'visits', 'age'].includes(activeTab)) {
       const data = activeTab === 'age' ? ageGroupData : chartData;
       return (
         <div className="flex justify-center items-center w-full min-h-[400px]">
-          <PieChart width={chartWidth} height={380} key={`pie-${chartWidth}`}>
+          <PieChart width={chartWidth} height={380}>
             <Pie data={data} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" nameKey="name" stroke="none" isAnimationActive={false}>
-              {data.map((entry, i) => (
-                <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
-              ))}
+              {data.map((entry, i) => <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />)}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', paddingTop: '20px' }} />
@@ -311,18 +271,12 @@ export default function SurveyTable() {
       const dynamicHeight = activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : 400;
       return (
         <div className="flex justify-center w-full" style={{ minHeight: dynamicHeight }}>
-          <BarChart key={`bar-${activeTab}-${chartWidth}`} width={chartWidth} height={dynamicHeight} data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'} margin={{ left: 5, right: 30, top: 10, bottom: 10 }}>
+          <BarChart width={chartWidth} height={dynamicHeight} data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'} margin={{ left: 5, right: 30, top: 10, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
             {activeTab === 'prefecture' ? (
-              <>
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={10} width={80} interval={0} tick={{ fill: '#a1a1aa' }} />
-              </>
+              <><XAxis type="number" hide /><YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={10} width={80} interval={0} /></>
             ) : (
-              <>
-                <XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} />
-                <YAxis stroke="#52525b" fontSize={9} />
-              </>
+              <><XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} /><YAxis stroke="#52525b" fontSize={9} /></>
             )}
             <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={activeTab === 'prefecture' ? 20 : 15} isAnimationActive={false} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
@@ -340,12 +294,10 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.5</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.5 (TEST MODE)</p>
           </div>
           <div className="flex gap-2">
-            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
-              セットリスト制作
-            </a>
+            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">セットリスト制作</a>
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
               {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
             </button>
@@ -365,8 +317,7 @@ export default function SurveyTable() {
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
                   const targetDate = normalizeDate(ev.event_date);
-                  const targetYear = targetDate.split('-')[0];
-                  const isAlreadyRegistered = registeredSet.has(`${targetYear}_${ev.title}_${targetDate}`);
+                  const isAlreadyRegistered = registeredSet.has(`${targetDate.split('-')[0]}_${ev.title}_${targetDate}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
@@ -390,22 +341,10 @@ export default function SurveyTable() {
                     ))}
                   </div>
                   {selectedTypeForImport && (
-                    <div 
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${
-                        isDragging 
-                          ? 'border-red-500 bg-red-500/10 scale-[1.02]' 
-                          : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'
-                      }`}
-                    >
-                      <p className="text-white font-black uppercase text-[12px]">
-                        {uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}
-                      </p>
+                    <div onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${isDragging ? 'border-red-500 bg-red-500/10 scale-[1.02]' : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'}`}>
+                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}</p>
                       <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
                       <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
-                      <p className="text-zinc-600 text-[8px] font-mono mt-2 uppercase tracking-widest">Supports .csv, .xlsx</p>
                     </div>
                   )}
                 </div>
@@ -418,9 +357,7 @@ export default function SurveyTable() {
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
                 <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
-                  <option value="2026">2026</option>
-                  <option value="2027">2027</option>
-                  <option value="2028">2028</option>
+                  <option value="2026">2026</option><option value="2027">2027</option><option value="2028">2028</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
