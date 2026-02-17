@@ -33,14 +33,18 @@ const ANALYSIS_TARGETS = [
 ];
 
 /**
- * 日付を YYYY-MM-DD に変換する
+ * 日付を YYYY-MM-DD に変換する強化版
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
+  // T以降をカット
   let pureDate = dateStr.split('T')[0];
+  // スラッシュをハイフンに変換
   pureDate = pureDate.replace(/\//g, '-');
+  
   const parts = pureDate.split('-');
   if (parts.length !== 3) return pureDate;
+  
   const y = parts[0];
   const m = parts[1].padStart(2, '0');
   const d = parts[2].padStart(2, '0');
@@ -67,19 +71,9 @@ export default function SurveyTable() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: events } = await supabase.from("calendar_events")
-        .select("*")
-        .eq("category", "LIVE")
-        .order("event_date", { ascending: false })
-        .limit(100);
+      const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false });
       setLiveEvents(events || []);
-
-      // 【修正】取得上限を10,000件に拡大。これで1公演700件×10公演以上でも溢れません
-      const { data: responses, error } = await supabase.from("survey_responses")
-        .select("*")
-        .order('created_at', { ascending: false })
-        .limit(100000); 
-
+      const { data: responses, error } = await supabase.from("survey_responses").select("*").order('created_at', { ascending: false });
       if (error) console.error("Fetch Error:", error);
       setTableData(responses || []);
     } catch (err) { console.error(err); } finally { setLoading(false); }
@@ -107,18 +101,17 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
-  // 重複チェック用
   const registeredSet = useMemo(() => {
     return new Set(tableData.map(d => {
       const datePart = normalizeDate(d.created_at);
-      return `${d.event_year}_${d.live_name}_${datePart}`;
+      return `${datePart}_${d.live_name}`;
     }));
   }, [tableData]);
 
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
-      const matchY = anaYear === "All" || String(d.event_year) === String(anaYear);
+      const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       if (matchY && matchT) {
         const datePart = normalizeDate(d.created_at || "Unknown");
@@ -131,16 +124,15 @@ export default function SurveyTable() {
 
   const processFile = async (file: File) => {
     if (!selectedLiveForImport || !selectedTypeForImport) {
-      alert("ライブと会場タイプを選択してください");
+      alert("会場タイプを先に選択してください");
       return;
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const targetYear = targetDate.split('-')[0];
-    const isAlreadyRegistered = registeredSet.has(`${targetYear}_${selectedLiveForImport.title}_${targetDate}`);
+    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
     
     if (isAlreadyRegistered) {
-      const confirmOverwrite = window.confirm(`「${targetDate}」のデータは既に存在します。上書きしますか？`);
+      const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
       if (!confirmOverwrite) return;
     }
 
@@ -157,6 +149,7 @@ export default function SurveyTable() {
         
         if (!rows || rows.length < 2) throw new Error("データが空です");
 
+        const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
           const rawVisits = String(row[1] || "").trim();
@@ -172,21 +165,23 @@ export default function SurveyTable() {
             gender:       String(row[4] || "").trim(),
             live_name:    selectedLiveForImport.title,
             venue_type:   selectedTypeForImport,
-            event_year:   targetYear,
+            event_year:   currentEventYear,
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
 
-        // 【修正】ピンポイント削除：ライブ名と「日付」が一致するものだけを削除
+        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
         await supabase.from("survey_responses")
           .delete()
           .eq("live_name", selectedLiveForImport.title)
-          .like("created_at", `${targetDate}%`);
+          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
+          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
 
+        // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
-        alert(`成功: ${targetDate}分として ${formattedData.length}件登録しました`);
+        alert(`成功: ${formattedData.length}件登録しました`);
         await fetchData();
         setView('analytics');
       } catch (err: any) { 
@@ -211,14 +206,12 @@ export default function SurveyTable() {
     return tableData.filter(d => {
       const datePart = normalizeDate(d.created_at);
       const currentKey = `${datePart}_${d.live_name}`;
-      const matchY = anaYear === "All" || String(d.event_year) === String(anaYear);
+      const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       const matchL = anaLiveKey === "All" || currentKey === anaLiveKey;
       return matchY && matchT && matchL;
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
-
-  // ... (chartData, ageGroupData, totalValue, getItemColor, CustomTooltip は変更なし)
 
   const chartData = useMemo(() => {
     const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
@@ -228,6 +221,7 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
+        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -340,7 +334,7 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V4.5</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
             <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
@@ -364,9 +358,8 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const targetDate = normalizeDate(ev.event_date);
-                  const targetYear = targetDate.split('-')[0];
-                  const isAlreadyRegistered = registeredSet.has(`${targetYear}_${ev.title}_${targetDate}`);
+                  const dateKey = normalizeDate(ev.event_date);
+                  const isAlreadyRegistered = registeredSet.has(`${dateKey}_${ev.title}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
