@@ -37,9 +37,7 @@ const ANALYSIS_TARGETS = [
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
-  // T以降をカット
   let pureDate = dateStr.split('T')[0];
-  // スラッシュをハイフンに変換
   pureDate = pureDate.replace(/\//g, '-');
   
   const parts = pureDate.split('-');
@@ -101,11 +99,11 @@ export default function SurveyTable() {
     };
   }, [activeTab]);
 
+  // キー生成用の共通関数（空白除去を入れることでマッチ率を向上させる）
+  const generateKey = (date: string, name: string) => `${normalizeDate(date)}_${String(name || "").trim()}`;
+
   const registeredSet = useMemo(() => {
-    return new Set(tableData.map(d => {
-      const datePart = normalizeDate(d.created_at);
-      return `${datePart}_${d.live_name}`;
-    }));
+    return new Set(tableData.map(d => generateKey(d.created_at, d.live_name)));
   }, [tableData]);
 
   const registeredLiveOptions = useMemo(() => {
@@ -114,9 +112,8 @@ export default function SurveyTable() {
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       if (matchY && matchT) {
-        const datePart = normalizeDate(d.created_at || "Unknown");
-        const key = `${datePart}_${d.live_name}`;
-        if (!map.has(key)) map.set(key, { key, date: datePart, name: d.live_name });
+        const key = generateKey(d.created_at, d.live_name);
+        if (!map.has(key)) map.set(key, { key, date: normalizeDate(d.created_at), name: d.live_name });
       }
     });
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
@@ -124,12 +121,13 @@ export default function SurveyTable() {
 
   const processFile = async (file: File) => {
     if (!selectedLiveForImport || !selectedTypeForImport) {
-      alert("会場タイプを先に選択してください");
+      alert("公演と会場タイプを選択してください");
       return;
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
+    const liveTitle = String(selectedLiveForImport.title || "").trim();
+    const isAlreadyRegistered = registeredSet.has(generateKey(targetDate, liveTitle));
     
     if (isAlreadyRegistered) {
       const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
@@ -163,19 +161,19 @@ export default function SurveyTable() {
             prefecture:   String(row[2] || "").trim(),
             age:          ageDisplay,
             gender:       String(row[4] || "").trim(),
-            live_name:    selectedLiveForImport.title,
+            live_name:    liveTitle,
             venue_type:   selectedTypeForImport,
             event_year:   currentEventYear,
             created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
 
-        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
+        // 既存データの削除
         await supabase.from("survey_responses")
           .delete()
-          .eq("live_name", selectedLiveForImport.title)
-          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
-          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
+          .eq("live_name", liveTitle)
+          .gte("created_at", `${targetDate}T00:00:00Z`)
+          .lte("created_at", `${targetDate}T23:59:59Z`);
 
         // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
@@ -204,8 +202,7 @@ export default function SurveyTable() {
 
   const filteredData = useMemo(() => {
     return tableData.filter(d => {
-      const datePart = normalizeDate(d.created_at);
-      const currentKey = `${datePart}_${d.live_name}`;
+      const currentKey = generateKey(d.created_at, d.live_name);
       const matchY = anaYear === "All" || String(d.event_year) === anaYear;
       const matchT = anaType === "All" || d.venue_type === anaType;
       const matchL = anaLiveKey === "All" || currentKey === anaLiveKey;
@@ -221,7 +218,6 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
-        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -358,14 +354,13 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const dateKey = normalizeDate(ev.event_date);
-                  const isAlreadyRegistered = registeredSet.has(`${dateKey}_${ev.title}`);
+                  const isRegistered = registeredSet.has(generateKey(ev.event_date, ev.title));
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
                       <div className="flex justify-between items-center text-[8px] font-mono text-zinc-500">
                         <span>{ev.event_date}</span>
-                        {isAlreadyRegistered && <span className="text-red-500 uppercase font-black">Registered</span>}
+                        {isRegistered && <span className="text-red-500 uppercase font-black">Registered</span>}
                       </div>
                       <div className="font-bold text-[11px] mt-1">{ev.title}</div>
                     </button>
