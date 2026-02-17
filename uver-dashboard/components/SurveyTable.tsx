@@ -33,14 +33,22 @@ const ANALYSIS_TARGETS = [
 ];
 
 /**
- * 日付正規化
+ * 日付を YYYY-MM-DD に変換する強化版
  */
 const normalizeDate = (dateStr: string) => {
   if (!dateStr) return "";
-  let pureDate = dateStr.split('T')[0].replace(/\//g, '-');
+  // T以降をカット
+  let pureDate = dateStr.split('T')[0];
+  // スラッシュをハイフンに変換
+  pureDate = pureDate.replace(/\//g, '-');
+  
   const parts = pureDate.split('-');
   if (parts.length !== 3) return pureDate;
-  return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+  
+  const y = parts[0];
+  const m = parts[1].padStart(2, '0');
+  const d = parts[2].padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 export default function SurveyTable() {
@@ -60,80 +68,72 @@ export default function SurveyTable() {
   const [isReady, setIsReady] = useState(false);
   const [chartWidth, setChartWidth] = useState(320);
 
-  // データ取得
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. カレンダーイベント取得
-      const { data: events } = await supabase.from("calendar_events")
-        .select("*")
-        .eq("category", "LIVE")
-        .order("event_date", { ascending: false });
+      const { data: events } = await supabase.from("calendar_events").select("*").eq("category", "LIVE").order("event_date", { ascending: false });
       setLiveEvents(events || []);
-
-      // 2. アンケートデータ取得（フィルタリング対応）
-      let query = supabase.from("survey_responses").select("*");
-      
-      if (anaYear !== "All") query = query.eq("event_year", anaYear);
-      if (anaType !== "All") query = query.eq("venue_type", anaType);
-      
-      if (anaLiveKey !== "All") {
-        const [datePart, ...nameParts] = anaLiveKey.split('_');
-        const liveName = nameParts.join('_');
-        query = query.eq("live_name", liveName).like("created_at", `${datePart}%`);
-      }
-
-      const { data: responses, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(anaLiveKey === "All" ? 30000 : 10000);
-
+      const { data: responses, error } = await supabase.from("survey_responses").select("*").order('created_at', { ascending: false });
       if (error) console.error("Fetch Error:", error);
       setTableData(responses || []);
     } catch (err) { console.error(err); } finally { setLoading(false); }
-  }, [anaYear, anaType, anaLiveKey]);
+  }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { 
+    fetchData(); 
+  }, [fetchData]);
 
   useEffect(() => {
     const updateSize = () => {
       const width = window.innerWidth;
-      setChartWidth(width < 768 ? width - 48 : Math.min(width * 0.55, 700));
+      if (width < 768) {
+        setChartWidth(width - 48); 
+      } else {
+        setChartWidth(Math.min(width * 0.55, 700));
+      }
     };
     updateSize();
     window.addEventListener('resize', updateSize);
     const timer = setTimeout(() => setIsReady(true), 300);
-    return () => { window.removeEventListener('resize', updateSize); clearTimeout(timer); };
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      clearTimeout(timer);
+    };
   }, [activeTab]);
 
-  // 登録済みライブの選択肢
+  const registeredSet = useMemo(() => {
+    return new Set(tableData.map(d => {
+      const datePart = normalizeDate(d.created_at);
+      return `${datePart}_${d.live_name}`;
+    }));
+  }, [tableData]);
+
   const registeredLiveOptions = useMemo(() => {
     const map = new Map();
     tableData.forEach(d => {
-      const datePart = normalizeDate(d.created_at || "Unknown");
-      const key = `${datePart}_${d.live_name}`;
-      if (!map.has(key)) map.set(key, { key, date: datePart, name: d.live_name });
+      const matchY = anaYear === "All" || String(d.event_year) === anaYear;
+      const matchT = anaType === "All" || d.venue_type === anaType;
+      if (matchY && matchT) {
+        const datePart = normalizeDate(d.created_at || "Unknown");
+        const key = `${datePart}_${d.live_name}`;
+        if (!map.has(key)) map.set(key, { key, date: datePart, name: d.live_name });
+      }
     });
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-  }, [tableData]);
+  }, [tableData, anaYear, anaType]);
 
-  // 重複チェック用Set
-  const registeredSet = useMemo(() => {
-    return new Set(tableData.map(d => `${normalizeDate(d.created_at)}_${d.live_name}`));
-  }, [tableData]);
-
-  // ファイルインポート処理
   const processFile = async (file: File) => {
     if (!selectedLiveForImport || !selectedTypeForImport) {
-      alert("ライブと会場タイプを選択してください");
+      alert("会場タイプを先に選択してください");
       return;
     }
 
     const targetDate = normalizeDate(selectedLiveForImport.event_date);
-    const targetTitle = selectedLiveForImport.title; // ここで確実にイベントタイトルを取得
-    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${targetTitle}`);
+    const isAlreadyRegistered = registeredSet.has(`${targetDate}_${selectedLiveForImport.title}`);
     
     if (isAlreadyRegistered) {
-      if (!window.confirm(`「${targetTitle}」のデータは既に存在します。上書きしますか？`)) return;
+      const confirmOverwrite = window.confirm(`既にデータがあります。上書きしますか？`);
+      if (!confirmOverwrite) return;
     }
 
     setUploading(true);
@@ -143,39 +143,63 @@ export default function SurveyTable() {
         const data = evt.target?.result;
         if (!data) return;
         const workbook = XLSX.read(data, { type: 'binary', codepage: 932 });
-        const rows: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1, raw: false });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
         
+        if (!rows || rows.length < 2) throw new Error("データが空です");
+
         const currentEventYear = targetDate.split('-')[0];
         const formattedData = rows.slice(1).map((row) => {
           if (!row[0] && !row[1]) return null;
+          const rawVisits = String(row[1] || "").trim();
+          const visitsDisplay = rawVisits.includes("回") ? rawVisits : `${rawVisits}回`;
+          const rawAge = String(row[3] || "").trim();
+          const ageDisplay = rawAge.includes("代") ? rawAge : `${rawAge}代`;
+
           return {
             request_song: String(row[0] || "").trim(),
-            visits: String(row[1] || "").includes("回") ? String(row[1]) : `${row[1]}回`,
-            prefecture: String(row[2] || "").trim(),
-            age: String(row[3] || "").includes("代") ? String(row[3]) : `${row[3]}代`,
-            gender: String(row[4] || "").trim(),
-            live_name: targetTitle, // 保存時に確実にライブ名を入れる
-            venue_type: selectedTypeForImport,
-            event_year: currentEventYear,
-            created_at: new Date(`${targetDate}T09:00:00Z`).toISOString(), 
+            visits:       visitsDisplay,
+            prefecture:   String(row[2] || "").trim(),
+            age:          ageDisplay,
+            gender:       String(row[4] || "").trim(),
+            live_name:    selectedLiveForImport.title,
+            venue_type:   selectedTypeForImport,
+            event_year:   currentEventYear,
+            created_at:   new Date(`${targetDate}T09:00:00Z`).toISOString(), 
           };
         }).filter(Boolean);
 
-        // 【上書き処理】ピンポイント削除
+        // 既存データの削除を実行（失敗しても続行できるように try-catch せず個別に処理）
         await supabase.from("survey_responses")
           .delete()
-          .eq("live_name", targetTitle)
-          .like("created_at", `${targetDate}%`);
+          .eq("live_name", selectedLiveForImport.title)
+          .filter("created_at", "gte", `${targetDate}T00:00:00Z`)
+          .filter("created_at", "lte", `${targetDate}T23:59:59Z`);
 
+        // 新規挿入
         const { error: insError } = await supabase.from("survey_responses").insert(formattedData);
         if (insError) throw insError;
         
         alert(`成功: ${formattedData.length}件登録しました`);
         await fetchData();
         setView('analytics');
-      } catch (err: any) { alert("失敗: " + err.message); } finally { setUploading(false); }
+      } catch (err: any) { 
+        alert("インポート失敗: " + err.message); 
+      } finally { 
+        setUploading(false); 
+      }
     };
     reader.readAsBinaryString(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const handleDragLeave = () => { setIsDragging(false); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) processFile(files[0]);
   };
 
   const filteredData = useMemo(() => {
@@ -189,7 +213,6 @@ export default function SurveyTable() {
     });
   }, [tableData, anaYear, anaType, anaLiveKey]);
 
-  // 集計ロジック
   const chartData = useMemo(() => {
     const target = ANALYSIS_TARGETS.find(t => t.id === activeTab);
     const key = target?.key;
@@ -198,6 +221,7 @@ export default function SurveyTable() {
     filteredData.forEach(item => {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       if (activeTab === 'song' && rawVal !== "未回答") {
+        // 空白を除外した分割ルール（THE OVER 対応済）
         const splitSongs = rawVal.split(/[/,、&／＆・\n]+/);
         splitSongs.forEach(song => {
           let cleanSong = song.replace(/[（(].*?[）)]/g, '').replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '').replace(/！/g, '!').trim();
@@ -206,7 +230,10 @@ export default function SurveyTable() {
         });
       } else if (activeTab === 'visits' && rawVal !== "未回答") {
         const numMatch = rawVal.match(/\d+/);
-        if (numMatch) counts[`${numMatch[0]}回`] = (counts[`${numMatch[0]}回`] || 0) + 1;
+        if (numMatch) {
+          const formatted = `${numMatch[0]}回`;
+          counts[formatted] = (counts[formatted] || 0) + 1;
+        }
       } else if (rawVal !== "回" && rawVal !== "未回答" && rawVal !== "") {
         counts[rawVal] = (counts[rawVal] || 0) + 1;
       }
@@ -217,9 +244,11 @@ export default function SurveyTable() {
 
   const ageGroupData = useMemo(() => {
     if (activeTab !== 'age') return [];
+    const groupOrder = ["10代", "20代", "30代", "40代", "50代", "60代以上"];
     const groups: { [key: string]: number } = { "10代": 0, "20代": 0, "30代": 0, "40代": 0, "50代": 0, "60代以上": 0 };
     filteredData.forEach(item => {
-      const numMatch = String(item.age || "").match(/\d+/);
+      const rawAge = String(item.age || "").trim();
+      const numMatch = rawAge.match(/\d+/);
       if (numMatch) {
         const val = parseInt(numMatch[0]);
         if (val >= 10 && val < 20) groups["10代"]++;
@@ -227,14 +256,19 @@ export default function SurveyTable() {
         else if (val >= 30 && val < 40) groups["30代"]++;
         else if (val >= 40 && val < 50) groups["40代"]++;
         else if (val >= 50 && val < 60) groups["50代"]++;
-        else groups["60代以上"]++;
+        else if (val >= 60 || val > 1900) groups["60代以上"]++;
       }
     });
-    return Object.entries(groups).map(([name, value]) => ({ name, value })).filter(item => item.value > 0);
+    return groupOrder.map(name => ({ name, value: groups[name] })).filter(item => item.value > 0);
   }, [filteredData, activeTab]);
 
   const totalValue = useMemo(() => (activeTab === 'age' ? ageGroupData : chartData).reduce((acc, curr) => acc + curr.value, 0), [chartData, ageGroupData, activeTab]);
-  const getItemColor = (name: string, index: number) => (activeTab === 'gender' && GENDER_COLORS[name]) ? GENDER_COLORS[name] : (activeTab === 'prefecture' ? '#ef4444' : COLORS[index % COLORS.length]);
+
+  const getItemColor = (name: string, index: number) => {
+    if (activeTab === 'gender' && GENDER_COLORS[name]) return GENDER_COLORS[name];
+    if (activeTab === 'prefecture') return '#ef4444';
+    return COLORS[index % COLORS.length];
+  };
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -243,7 +277,7 @@ export default function SurveyTable() {
         <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-2xl">
           <p className="text-white font-black text-[11px] mb-1">{data.name}</p>
           <p className="text-red-500 font-mono text-[10px]">COUNT: {data.value}</p>
-          <p className="text-zinc-400 font-mono text-[10px]">RATIO: {((data.value / (totalValue || 1)) * 100).toFixed(1)}%</p>
+          <p className="text-zinc-400 font-mono text-[10px]">RATIO: {((data.value / totalValue) * 100).toFixed(1)}%</p>
         </div>
       );
     }
@@ -251,14 +285,16 @@ export default function SurveyTable() {
   };
 
   const renderChartContent = () => {
-    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-widest text-[8px]">Connect...</div>;
-    if (['gender', 'visits', 'age'].includes(activeTab)) {
+    if (!isReady) return <div className="h-[400px] flex items-center justify-center font-mono text-zinc-800 uppercase tracking-widest">Connect...</div>;
+    if (activeTab === 'gender' || activeTab === 'visits' || activeTab === 'age') {
       const data = activeTab === 'age' ? ageGroupData : chartData;
       return (
         <div className="flex justify-center items-center w-full min-h-[400px]">
-          <PieChart width={chartWidth} height={380}>
+          <PieChart width={chartWidth} height={380} key={`pie-${chartWidth}`}>
             <Pie data={data} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value" nameKey="name" stroke="none" isAnimationActive={false}>
-              {data.map((entry, i) => <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />)}
+              {data.map((entry, i) => (
+                <Cell key={`cell-${i}`} fill={getItemColor(entry.name, i)} />
+              ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
             <Legend iconType="circle" layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '9px', paddingTop: '20px' }} />
@@ -269,12 +305,18 @@ export default function SurveyTable() {
       const dynamicHeight = activeTab === 'prefecture' ? Math.max(chartData.length * 35, 500) : 400;
       return (
         <div className="flex justify-center w-full" style={{ minHeight: dynamicHeight }}>
-          <BarChart width={chartWidth} height={dynamicHeight} data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'} margin={{ left: 5, right: 30, top: 10, bottom: 10 }}>
+          <BarChart key={`bar-${activeTab}-${chartWidth}`} width={chartWidth} height={dynamicHeight} data={chartData} layout={activeTab === 'prefecture' ? 'vertical' : 'horizontal'} margin={{ left: 5, right: 30, top: 10, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#18181b" vertical={false} />
             {activeTab === 'prefecture' ? (
-              <><XAxis type="number" hide /><YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={10} width={80} interval={0} /></>
+              <>
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" stroke="#a1a1aa" fontSize={10} width={80} interval={0} tick={{ fill: '#a1a1aa' }} />
+              </>
             ) : (
-              <><XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} /><YAxis stroke="#52525b" fontSize={9} /></>
+              <>
+                <XAxis dataKey="name" stroke="#52525b" fontSize={9} interval={0} />
+                <YAxis stroke="#52525b" fontSize={9} />
+              </>
             )}
             <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={activeTab === 'prefecture' ? 20 : 15} isAnimationActive={false} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
@@ -284,7 +326,7 @@ export default function SurveyTable() {
     }
   };
 
-  if (loading && tableData.length === 0) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono text-xs tracking-tighter">LOADING SYSTEM...</div>;
+  if (loading) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono text-xs">LOADING SYSTEM...</div>;
 
   return (
     <main className="min-h-screen w-full bg-black text-white p-4 md:p-12 font-sans text-[10px]">
@@ -292,14 +334,23 @@ export default function SurveyTable() {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">LIVE <span className="text-red-600">Analytics</span></h1>
-            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V6.0</p>
+            <p className="text-zinc-600 font-mono mt-2 tracking-[0.2em] text-[7px]">SURVEY ANALYSIS SYSTEM V3.6</p>
           </div>
           <div className="flex gap-2">
+            <a href="https://uw0606.github.io/setlist/" target="_blank" rel="noopener noreferrer" className="bg-zinc-900 text-white border border-zinc-700 px-6 py-3 rounded-full font-black uppercase text-[9px] hover:bg-zinc-800 transition-all flex items-center">
+              セットリスト制作
+            </a>
             <button onClick={() => setView(view === 'analytics' ? 'import' : 'analytics')} className="bg-white text-black px-8 py-3 rounded-full font-black uppercase text-[9px] hover:bg-red-600 hover:text-white transition-all">
               {view === 'analytics' ? '＋ データを登録する' : '← 分析に戻る'}
             </button>
           </div>
         </header>
+
+        <div className="flex flex-wrap gap-2 mb-10 overflow-x-auto pb-4 border-t border-zinc-900 pt-6">
+          <a href="/calendar" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">カレンダー</a>
+          <a href="/" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">YouTube動画解析</a>
+          <a href="/sns" className="px-5 py-2 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded-full text-[9px] font-bold hover:bg-zinc-800 hover:text-white transition-all whitespace-nowrap uppercase tracking-widest">SNS解析</a>
+        </div>
 
         {view === 'import' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -307,15 +358,16 @@ export default function SurveyTable() {
               <h2 className="text-zinc-500 font-black uppercase text-[10px] mb-4 border-l-2 border-red-600 pl-3">1. Select Live Event</h2>
               <div className="space-y-2 h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                 {liveEvents.map(ev => {
-                  const isRegistered = registeredSet.has(`${normalizeDate(ev.event_date)}_${ev.title}`);
+                  const dateKey = normalizeDate(ev.event_date);
+                  const isAlreadyRegistered = registeredSet.has(`${dateKey}_${ev.title}`);
                   return (
                     <button key={ev.id} onClick={() => setSelectedLiveForImport(ev)} 
                       className={`w-full text-left p-4 rounded-xl border transition-all ${selectedLiveForImport?.id === ev.id ? 'border-red-600 bg-red-600/10' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-500'}`}>
                       <div className="flex justify-between items-center text-[8px] font-mono text-zinc-500">
                         <span>{ev.event_date}</span>
-                        {isRegistered && <span className="text-red-500 font-black uppercase">Registered</span>}
+                        {isAlreadyRegistered && <span className="text-red-500 uppercase font-black">Registered</span>}
                       </div>
-                      <div className="font-bold text-[11px] mt-1 text-white">{ev.title}</div>
+                      <div className="font-bold text-[11px] mt-1">{ev.title}</div>
                     </button>
                   );
                 })}
@@ -331,10 +383,22 @@ export default function SurveyTable() {
                     ))}
                   </div>
                   {selectedTypeForImport && (
-                    <div onDragOver={(e) => {e.preventDefault(); setIsDragging(true);}} onDragLeave={() => setIsDragging(false)} onDrop={(e) => {e.preventDefault(); setIsDragging(false); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);}} className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${isDragging ? 'border-red-500 bg-red-500/10 scale-[1.02]' : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'}`}>
-                      <p className="text-white font-black uppercase text-[12px]">{uploading ? "UPLOADING..." : "Drop File or Browse"}</p>
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`relative pt-12 pb-12 border-2 border-dashed rounded-3xl flex flex-col items-center justify-center gap-4 transition-all duration-300 ${
+                        isDragging 
+                          ? 'border-red-500 bg-red-500/10 scale-[1.02]' 
+                          : 'border-zinc-700 bg-zinc-950/50 hover:border-zinc-500'
+                      }`}
+                    >
+                      <p className="text-white font-black uppercase text-[12px]">
+                        {uploading ? "UPLOADING..." : isDragging ? "DROP NOW" : "Drop File or Browse"}
+                      </p>
                       <input type="file" className="hidden" id="file-upload" accept=".csv,.xlsx" onChange={(e) => e.target.files && processFile(e.target.files[0])} />
                       <label htmlFor="file-upload" className="bg-white text-black px-6 py-2 rounded-full font-black uppercase text-[9px] cursor-pointer hover:bg-red-600 hover:text-white transition-all">SELECT</label>
+                      <p className="text-zinc-600 text-[8px] font-mono mt-2 uppercase tracking-widest">Supports .csv, .xlsx</p>
                     </div>
                   )}
                 </div>
@@ -345,14 +409,15 @@ export default function SurveyTable() {
           <div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 bg-zinc-950 p-6 rounded-3xl border border-zinc-800">
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">1. Year</span>
-                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
+                <select value={anaYear} onChange={(e) => { setAnaYear(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Years</option>
-                  <option value="2025">2025</option>
                   <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                  <option value="2028">2028</option>
                 </select>
               </div>
               <div className="flex flex-col gap-2"><span className="text-zinc-600 font-black text-[8px] uppercase">2. Venue Type</span>
-                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white outline-none">
+                <select value={anaType} onChange={(e) => { setAnaType(e.target.value); setAnaLiveKey("All"); }} className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl font-bold font-mono text-white">
                   <option value="All">All Types</option>{VENUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
@@ -409,8 +474,10 @@ export default function SurveyTable() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden flex justify-center items-center">{renderChartContent()}</div>
-                <div className="bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto max-h-[450px]">
+                <div className="lg:col-span-2 bg-zinc-950 p-4 md:p-8 rounded-[40px] border border-zinc-800 overflow-hidden flex justify-center items-center">
+                   {renderChartContent()}
+                </div>
+                <div className={`bg-zinc-900/30 p-8 rounded-[40px] border border-zinc-800 overflow-y-auto ${activeTab === 'prefecture' ? 'h-auto max-h-[1000px]' : 'max-h-[450px]'}`}>
                   <h4 className="text-zinc-500 text-[9px] font-black uppercase mb-8 border-l-2 border-red-600 pl-4">Summary</h4>
                   <div className="space-y-4">
                     {(activeTab === 'age' ? ageGroupData : chartData).map((item, i) => (
