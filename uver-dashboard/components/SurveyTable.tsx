@@ -258,7 +258,7 @@ export default function SurveyTable() {
             .trim();
 
           // --- 4. 表記ゆれの統一 ---
-          if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
+          if (["ハイ、問題作！", "ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
           
           if (cleanSong) {
             counts[cleanSong] = (counts[cleanSong] || 0) + 1;
