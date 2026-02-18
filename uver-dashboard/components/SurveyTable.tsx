@@ -237,21 +237,27 @@ export default function SurveyTable() {
       let rawVal = item[key] ? String(item[key]).trim() : "未回答";
       
       if (activeTab === 'song' && rawVal !== "未回答") {
-        // 特定の曲「99/100騙しの哲」のスラッシュが分割されないよう一時的に置換
-        let processedVal = rawVal.replace(/99\/100騙しの哲/g, "TEMP_哲");
+        // --- 1. 区切り文字を含む曲名を一時的に置換して保護 ---
+        let processedVal = rawVal
+          .replace(/99\/100騙しの哲/g, "TEMP_TETSU")
+          .replace(/ナノ・セカンド/g, "TEMP_NANO")
+          .replace(/アイ・アムRiri/g, "TEMP_RIRI");
 
-        // 区切り文字で分割
+        // --- 2. 区切り文字で分割 ---
         const splitSongs = processedVal.split(/[/,、&／＆・\n]+/);
         
         splitSongs.forEach(song => {
-          // 置換していた文字列を元の「99/100騙しの哲」に戻す
-          let cleanSong = song.replace(/TEMP_哲/g, "99/100騙しの哲")
-                             .replace(/[（(].*?[）)]/g, '')
-                             .replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '')
-                             .replace(/！/g, '!')
-                             .trim();
+          // --- 3. 置換していた文字列を元の名前に戻す ---
+          let cleanSong = song
+            .replace(/TEMP_TETSU/g, "99/100騙しの哲")
+            .replace(/TEMP_NANO/g, "ナノ・セカンド")
+            .replace(/TEMP_RIRI/g, "アイ・アムRiri")
+            .replace(/[（(].*?[）)]/g, '') // 補足を削除
+            .replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '') // 数字を削除
+            .replace(/！/g, '!') // 全角感嘆符を半角に
+            .trim();
 
-          // 表記ゆれの統一
+          // --- 4. 表記ゆれの統一 ---
           if (["ハイ、問題作!", "ハイ問題作", "ハイ!問題作"].includes(cleanSong)) cleanSong = "ハイ!問題作";
           
           if (cleanSong) {
